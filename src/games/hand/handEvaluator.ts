@@ -140,5 +140,5 @@ function checkSuitCount(cards: Card[]): Record<Suit, number> {
     return suitCount;
 }
 
-getCardType(['10H', 'JD', 'KS', '9C']);
+// console.log(getCardType(['10H', 'JD', 'QS', 'KC', 'AD']));
 export { getCardType }

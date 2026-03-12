@@ -71,7 +71,13 @@ Phase 1 - Single game flow
 ## How to Run
 
 ```bash
-ts-node day1.ts
+npm i
+
+//-g global
+npm install -g typescript
+npm install -g ts-node
+
+ts-node src/games/hand/handEvaluator.ts
 ```
 ---
 
