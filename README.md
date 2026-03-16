@@ -65,25 +65,43 @@ Phase 1 - Single game flow
 
 ✔ Card type judgment implementation  
 ✔ Unit test for hand evaluation
+✔ Initialize NestJS structure
+✔ Migrate hand evaluator to module
+✔ Add WebSocket gateway
 
 ---
 
 ## How to Run
 
+1. Run the server
 ```bash
-npm i
+npm install
 
-//-g global
-npm install -g typescript
-npm install -g ts-node
+# development
+npm run start
 
-ts-node src/games/hand/handEvaluator.ts
+# watch mode
+npm run start:dev
+
+# production mode
+npm run start:prod
+```
+
+2. Test with Postman
+- Open Postman and create a WebSocket request.
+- Connect to: `ws://localhost:8088`.
+- Send the following message: 
+```json
+{
+    "event":"handEvaluator",
+    "data": ["QH", "10H", "AH", "JH", "KH"]
+}
 ```
 ---
 
 ## Blog Series
 This project is developed together with a blog series:
 1. Project planning and card type judgment 
-   从0到1实现 Balatro 游戏后端（1）：项目规划与牌型判断实现s
+   从0到1实现 Balatro 游戏后端（1）：项目规划与牌型判断实现
 
 (Updating...)
