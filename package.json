@@ -1,6 +1,7 @@
 {
   "name": "test_nest_balatro",
   "version": "0.0.1",
+  "type": "commonjs",
   "description": "",
   "author": "",
   "private": true,
@@ -20,7 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.1",
+    "@nestjs/common": "^11.1.17",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.16",
