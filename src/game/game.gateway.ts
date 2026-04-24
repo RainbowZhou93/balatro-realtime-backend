@@ -23,7 +23,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private clients = new Map<string, WebSocket>();
     private clientIdCounter = 1;
 
-    constructor(private readonly gameService: GameService) {}
+    constructor(private readonly gameService: GameService) { }
 
     handleConnection(@ConnectedSocket() client: GatewayClient) {
         const sock = client._socket;
@@ -47,16 +47,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
-    @SubscribeMessage("message")
-    handleMessage(@MessageBody() data: string, @ConnectedSocket() client: GatewayClient): string {
-        this.logger.log(`Received message from client ${client.__clientId}: ${data}`);
-        return data;
-    }
-
     @SubscribeMessage("handEvaluator")
-    handleHandEvaluator(@MessageBody() data: string[], @ConnectedSocket() client: GatewayClient): number {
+    handleHandEvaluator(@MessageBody() data: string[], @ConnectedSocket() client: GatewayClient): object {
         const handType = this.gameService.playCard(data);
         this.logger.log(`Received hand evaluation request from client ${client.__clientId}: ${JSON.stringify(data)}`);
-        return handType;
+        return { event: "handEvaluator", data: { handType } };
     }
 }

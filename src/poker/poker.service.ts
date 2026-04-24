@@ -49,7 +49,6 @@ export class PokerService {
         if (rankCounts.includes(2)) return CARD_TYPE.onePair;
 
         return CARD_TYPE.highCard;
-        return 1;
     }
 
     /**
