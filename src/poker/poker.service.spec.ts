@@ -95,9 +95,15 @@ describe("PokerService.dealCards", () => {
             const { hand } = service.dealCards({ playerId: "p2", handSize: 8, round: 1 });
 
             for (const card of hand) {
-                expect(validSuits.has(card.suit)).toBe(true);
-                expect(card.rank).toBeGreaterThanOrEqual(2);
-                expect(card.rank).toBeLessThanOrEqual(14);
+                const suit = card.slice(-1);
+                const rankStr = card.slice(0, -1);
+                const rankMap: Record<string, number> = { J: 11, Q: 12, K: 13, A: 14 };
+                const rank = rankMap[rankStr] ?? Number(rankStr);
+
+                expect(validSuits.has(suit)).toBe(true);
+                expect(Number.isNaN(rank)).toBe(false);
+                expect(rank).toBeGreaterThanOrEqual(2);
+                expect(rank).toBeLessThanOrEqual(14);
             }
         });
 
