@@ -1,8 +1,12 @@
+## Status
+
+🚧 Currently in Phase 1: Single game flow (deck, shuffle, dealing, state management)
+
 # balatro-realtime-backend
 
 ## Introduction
 
-A realtime backend implementation of a Balatro-like card game, built with Node.js, TypeScript, NestJS and WebSocket.
+A realtime backend system for a Balatro-like card game, built with Node.js, TypeScript, NestJS and WebSocket.
 
 This project is not only a game logic practice, but also a long-term backend engineering project.
 The goal is to gradually implement core backend capabilities through a complete card game server, including state management, cache layering, persistence, recovery, testing and extensibility.
@@ -28,9 +32,29 @@ The goal is to gradually implement core backend capabilities through a complete 
 - NestJS
 - WebSocket
 - Jest
-- Redis
-- MySQL
-- Docker / Docker Compose
+- GitHub Actions
+- Redis (planned)
+- MySQL (planned)
+- Docker / Docker Compose (planned)
+
+---
+
+## Architecture (WIP)
+
+Current structure (Phase 1):
+
+- WebSocket Gateway (entry point)
+- Game Service (orchestration layer)
+- Poker Service (core game logic)
+- In-memory state (per player)
+
+Future improvements:
+
+- Redis for state persistence
+- MySQL for long-term storage
+- Distributed session handling
+
+The system is evolving from a simple stateless logic into a state-driven game engine.
 
 ---
 
@@ -48,14 +72,14 @@ The goal is to gradually implement core backend capabilities through a complete 
 
 ## Roadmap
 
-Phase 1 - Single game flow  
-Phase 2 - Blind / stage system  
-Phase 3 - Persistence and cache  
-Phase 4 - Engineering and deployment  
-Phase 5 - Effect / modifier system  
-Phase 6 - Shop and reward system  
-Phase 7 - Special cards  
-Phase 8 - AI / Go / extension
+- Phase 1: Single game flow
+- Phase 2: Blind / stage system
+- Phase 3: Persistence and cache
+- Phase 4: Engineering and deployment
+- Phase 5: Effect / modifier system
+- Phase 6: Shop and reward system
+- Phase 7: Special cards
+- Phase 8: AI / Go / extension
 
 ---
 
@@ -64,16 +88,22 @@ Phase 8 - AI / Go / extension
 Phase 1 - Single game flow
 
 ✔ Card type judgment implementation  
-✔ Unit test for hand evaluation
-✔ Initialize NestJS structure
-✔ Migrate hand evaluator to module
-✔ Add WebSocket gateway
+✔ Unit test for hand evaluation  
+✔ Initialize NestJS structure  
+✔ Migrate hand evaluator to module  
+✔ Add WebSocket gateway  
+✔ Implement deck generation (52 cards)  
+✔ Implement shuffle algorithm (Fisher-Yates)  
+✔ Implement card dealing logic  
+✔ Introduce server-side deck state management (per player)  
+✔ Add unit tests for dealing logic
 
 ---
 
 ## How to Run
 
-1. Run the server
+### 1. Run the server
+
 ```bash
 npm install
 
@@ -87,21 +117,72 @@ npm run start:dev
 npm run start:prod
 ```
 
-2. Test with Postman
+### 2. Test with Postman
+
 - Open Postman and create a WebSocket request.
 - Connect to: `ws://localhost:8088`.
 - Send the following message: 
+
+**handEvaluator**
 ```json
 {
     "event":"handEvaluator",
     "data": ["QH", "10H", "AH", "JH", "KH"]
 }
 ```
+**dealCards**
+```json
+{
+    "event": "dealCards",
+    "data": {
+        "handSize": 8,
+        "round": 1
+    }
+}
+```
+
+### 3. Run tests
+
+Includes:
+
+- Hand evaluation test cases
+- Edge cases for invalid cards
+- Dealing logic tests
+
+```bash
+npm test
+```
+
 ---
 
+
 ## Blog Series
-This project is developed together with a blog series:
+- This project is developed alongside a blog series documenting the full journey from building core game logic to backend architecture and engineering practices.
+- Each article focuses on a specific stage of the backend system, from core logic to engineering practices.
+- Articles will be published progressively on CSDN.
+
+### Core Series
+
 1. Project planning and card type judgment 
    从0到1实现 Balatro 游戏后端（1）：项目规划与牌型判断实现
+   🔗 (coming soon)
+
+2. NestJS Setup and Project Structure Design  
+   从0到1实现 Balatro 游戏后端（2）：NestJS框架搭建与项目结构设计
+   🔗 (coming soon)
+
+3. Shuffling, Dealing, and Server-Side Deck State Management  
+   从0到1实现Balatro游戏后端（3）：洗牌、发牌与服务端牌堆状态管理
+   🔗 (coming soon)
+
+### Advanced Topics
+
+1. Custom NestJS WebSocket Adapter for Message Interception  
+   Balatro后端进阶（1）：自定义NestJS WebSocket Adapter实现消息拦截
+   🔗 (coming soon)
+
+2. CI Automation with GitHub Actions for NestJS Projects
+   Balatro后端进阶（2）：基于GitHub Actions的CI自动化
+   🔗 (coming soon)
 
 (Updating...)

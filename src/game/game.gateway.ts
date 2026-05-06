@@ -23,7 +23,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private clients = new Map<string, WebSocket>();
     private clientIdCounter = 1;
 
-    constructor(private readonly gameService: GameService) { }
+    constructor(private readonly gameService: GameService) {}
 
     handleConnection(@ConnectedSocket() client: GatewayClient) {
         const sock = client._socket;
@@ -48,9 +48,33 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     @SubscribeMessage("handEvaluator")
-    handleHandEvaluator(@MessageBody() data: string[], @ConnectedSocket() client: GatewayClient): object {
+    handleHandEvaluator(@MessageBody() data: string[]): object {
         const handType = this.gameService.playCard(data);
-        this.logger.log(`Received hand evaluation request from client ${client.__clientId}: ${JSON.stringify(data)}`);
         return { event: "handEvaluator", data: { handType } };
+    }
+
+    @SubscribeMessage("dealCards")
+    handleDealCards(
+        @MessageBody() data: { handSize: number; round: number },
+        @ConnectedSocket() client: GatewayClient,
+    ): object {
+        const playerId = client.__clientId;
+        if (!playerId) {
+            return {
+                event: "error",
+                data: {
+                    code: "PLAYER_ID_NOT_FOUND",
+                    message: "Player id is required",
+                },
+            };
+        }
+        const msg = {
+            handSize: data.handSize,
+            round: data.round,
+            playerId: playerId,
+        };
+
+        const dealResult = this.gameService.dealCards(msg);
+        return { event: "dealCards", data: dealResult };
     }
 }

@@ -1,11 +1,24 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { Card, Suit } from "./poker.types";
-import { RANK_MAP, CARD_TYPE } from "./poker.constants";
+import { Card, Suit, DealResult, DealCardsInput, GameState } from "./poker.types";
+import { RANK_MAP, CARD_TYPE, SUITS, RANKS, NUMBER_TO_RANK_MAP } from "./poker.constants";
 
 @Injectable()
 export class PokerService {
     private readonly logger = new Logger(PokerService.name);
-    constructor() {}
+    private readonly baseDeck: ReadonlyArray<Card>;
+    /**
+     * Stores each player's remaining deck during the current game.
+     * Key: playerId
+     * Value: remaining cards in the player's deck
+     *
+     * Note:
+     * This is an in-memory state for the current phase.
+     * It may be moved to Redis or database storage in later stages.
+     */
+    private readonly gameStates: Record<string, GameState> = {};
+    constructor() {
+        this.baseDeck = this.createDeck();
+    }
     public getCardType(cards: string[]): number {
         this.logger.log(`Evaluating hand: ${JSON.stringify(cards)}`);
         const userCard = this.parseCard(cards);
@@ -51,6 +64,38 @@ export class PokerService {
         return CARD_TYPE.highCard;
     }
 
+    public dealCards(data: DealCardsInput): DealResult {
+        const { playerId, handSize, round } = data;
+        let playerState: GameState;
+
+        // In the current design, round 1 indicates a new game.
+        // A fresh deck is created, shuffled, and stored on the server.
+        if (round === 1) {
+            playerState = this.gameStates[playerId];
+            if (!playerState) {
+                playerState = this.initPlayerState(playerId);
+            }
+        } else {
+            playerState = this.gameStates[playerId];
+        }
+
+        // Safety check: the player state should exist after the game starts.
+        if (!playerState) {
+            return { hand: [], remainingDeckCount: 0, playsLeft: 0 };
+        }
+
+        const deck = playerState.deck;
+
+        const hand = this.serializeCards(deck.splice(0, handSize));
+
+        playerState.hand = hand;
+        playerState.deck = deck;
+        playerState.round = round;
+        if (round != 1) playerState.playsLeft--;
+
+        return { remainingDeckCount: deck.length, playsLeft: playerState.playsLeft, hand };
+    }
+
     /**
      * @param cards ["10H", "JD", "KS", "9C"]
      * @returns: [{rank:10,suit:"H"},{rank:11,suit:"D"},{rank:12,suit:"S"},{rank:13,suit:"C"},{rank:14,suit:"D"}]
@@ -92,5 +137,49 @@ export class PokerService {
             suitCount[card.suit]++;
         }
         return suitCount;
+    }
+
+    private createDeck(): Card[] {
+        const deck: Card[] = [];
+        for (const suit of SUITS) {
+            for (const rank of RANKS) {
+                deck.push({ rank, suit });
+            }
+        }
+        return deck;
+    }
+
+    private getBaseDeck(): Card[] {
+        return [...this.baseDeck];
+    }
+
+    private shuffleDeck(deck: Card[]): Card[] {
+        for (let i = deck.length - 1; i > 0; i--) {
+            const randomNum = Math.floor(Math.random() * (i + 1));
+            [deck[i], deck[randomNum]] = [deck[randomNum], deck[i]];
+        }
+        return deck;
+    }
+
+    private initPlayerState(playerId: string): GameState {
+        const deck = this.shuffleDeck(this.getBaseDeck());
+        this.gameStates[playerId] = {
+            playerId: playerId,
+            deck: deck,
+            hand: [],
+            playsLeft: 5,
+            discardsLeft: 3,
+            round: 1,
+            score: 0,
+        };
+        Logger.log(`-${playerId}- initPlayerState: ${JSON.stringify(this.gameStates[playerId])}`);
+        return this.gameStates[playerId];
+    }
+
+    private serializeCards(cards: Card[]): string[] {
+        return cards.map((card) => {
+            const rank = NUMBER_TO_RANK_MAP[card.rank] ?? card.rank;
+            return `${rank}${card.suit}`;
+        });
     }
 }

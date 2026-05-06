@@ -20,4 +20,15 @@ const RANK_MAP: Record<string, number> = {
     J: 11,
 };
 
-export { CARD_TYPE, RANK_MAP };
+const NUMBER_TO_RANK_MAP: Record<number, string> = {
+    14: "A",
+    13: "K",
+    12: "Q",
+    11: "J",
+};
+
+const SUITS = ["H", "S", "D", "C"] as const;
+
+const RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
+
+export { CARD_TYPE, RANK_MAP, NUMBER_TO_RANK_MAP, SUITS, RANKS };
