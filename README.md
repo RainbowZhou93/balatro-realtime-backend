@@ -130,6 +130,7 @@ npm run start:prod
     "data": ["QH", "10H", "AH", "JH", "KH"]
 }
 ```
+
 **dealCards**
 ```json
 {
@@ -140,6 +141,18 @@ npm run start:prod
     }
 }
 ```
+
+**selectCards**
+```json
+{
+    "event": "selectCards",
+    "data": {
+        "selectedCards": ["9C", "8D"],
+        "action": "play"
+    }
+}
+```
+
 
 ### 3. Run tests
 
@@ -159,7 +172,9 @@ npm test
 ## Blog Series
 - This project is developed alongside a blog series documenting the full journey from building core game logic to backend architecture and engineering practices.
 - Each article focuses on a specific stage of the backend system, from core logic to engineering practices.
+- Each article corresponds to a specific implementation stage (tracked by commits in the repository).
 - Articles will be published progressively on CSDN.
+
 
 ### Core Series
 
@@ -173,6 +188,10 @@ npm test
 
 3. Shuffling, Dealing, and Server-Side Deck State Management  
    从0到1实现Balatro游戏后端（3）：洗牌、发牌与服务端牌堆状态管理
+   🔗 (coming soon)
+
+4. Player Hand Operations (Play / Discard / Draw) and State Flow Design  
+   从0到1实现Balatro游戏后端（4）：玩家手牌操作（出牌 / 弃牌 / 补牌）与状态流转设计  
    🔗 (coming soon)
 
 ### Advanced Topics

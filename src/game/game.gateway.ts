@@ -59,22 +59,23 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @ConnectedSocket() client: GatewayClient,
     ): object {
         const playerId = client.__clientId;
-        if (!playerId) {
-            return {
-                event: "error",
-                data: {
-                    code: "PLAYER_ID_NOT_FOUND",
-                    message: "Player id is required",
-                },
-            };
-        }
-        const msg = {
-            handSize: data.handSize,
-            round: data.round,
-            playerId: playerId,
-        };
+        if (!playerId)
+            return { event: "error", data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required" } };
 
-        const dealResult = this.gameService.dealCards(msg);
+        const dealResult = this.gameService.dealCards(data, playerId);
         return { event: "dealCards", data: dealResult };
+    }
+
+    @SubscribeMessage("selectCards")
+    handlePlayCards(
+        @MessageBody() data: { selectedCards: string[]; action: "play" | "discard" },
+        @ConnectedSocket() client: GatewayClient,
+    ): object {
+        const playerId = client.__clientId;
+        if (!playerId)
+            return { event: "error", data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required" } };
+
+        const selectCardsResult = this.gameService.selectCards(data.selectedCards, data.action, playerId);
+        return { event: "selectCardsResult", dara: selectCardsResult };
     }
 }

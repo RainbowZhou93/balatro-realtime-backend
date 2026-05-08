@@ -1,26 +1,15 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { Card, Suit, DealResult, DealCardsInput, GameState } from "./poker.types";
-import { RANK_MAP, CARD_TYPE, SUITS, RANKS, NUMBER_TO_RANK_MAP } from "./poker.constants";
+import { Injectable } from "@nestjs/common";
+import { Card, Suit } from "./poker.types";
+import { RANK_MAP, CARD_TYPE, SUITS, RANKS, NUMBER_TO_RANK_MAP, CARD_PATTERN } from "./poker.constants";
 
 @Injectable()
 export class PokerService {
-    private readonly logger = new Logger(PokerService.name);
     private readonly baseDeck: ReadonlyArray<Card>;
-    /**
-     * Stores each player's remaining deck during the current game.
-     * Key: playerId
-     * Value: remaining cards in the player's deck
-     *
-     * Note:
-     * This is an in-memory state for the current phase.
-     * It may be moved to Redis or database storage in later stages.
-     */
-    private readonly gameStates: Record<string, GameState> = {};
+
     constructor() {
         this.baseDeck = this.createDeck();
     }
     public getCardType(cards: string[]): number {
-        this.logger.log(`Evaluating hand: ${JSON.stringify(cards)}`);
         const userCard = this.parseCard(cards);
         const suitCount = Object.values(this.checkSuitCount(userCard));
         const isFlush = suitCount.includes(5);
@@ -39,7 +28,8 @@ export class PokerService {
                         break;
                     }
                 }
-                // sortedRanks.join() 判断sortedRanks中的元素是否是2、3、4、5、14（A）。如果是的话，说明这是一个特殊的顺子，A在这里被当作1来使用。
+
+                // A can be used as 1 in A-2-3-4-5 straight.
                 if (sortedRanks.join() === "2,3,4,5,14") isStraight = true;
             }
         }
@@ -64,46 +54,16 @@ export class PokerService {
         return CARD_TYPE.highCard;
     }
 
-    public dealCards(data: DealCardsInput): DealResult {
-        const { playerId, handSize, round } = data;
-        let playerState: GameState;
-
-        // In the current design, round 1 indicates a new game.
-        // A fresh deck is created, shuffled, and stored on the server.
-        if (round === 1) {
-            playerState = this.gameStates[playerId];
-            if (!playerState) {
-                playerState = this.initPlayerState(playerId);
-            }
-        } else {
-            playerState = this.gameStates[playerId];
-        }
-
-        // Safety check: the player state should exist after the game starts.
-        if (!playerState) {
-            return { hand: [], remainingDeckCount: 0, playsLeft: 0 };
-        }
-
-        const deck = playerState.deck;
-
-        const hand = this.serializeCards(deck.splice(0, handSize));
-
-        playerState.hand = hand;
-        playerState.deck = deck;
-        playerState.round = round;
-        if (round != 1) playerState.playsLeft--;
-
-        return { remainingDeckCount: deck.length, playsLeft: playerState.playsLeft, hand };
-    }
-
     /**
      * @param cards ["10H", "JD", "KS", "9C"]
      * @returns: [{rank:10,suit:"H"},{rank:11,suit:"D"},{rank:12,suit:"S"},{rank:13,suit:"C"},{rank:14,suit:"D"}]
      */
     private parseCard(cards: string[]): Card[] {
         const validSuits: Set<Suit> = new Set(["H", "S", "D", "C"]);
-
         return cards.map((card) => {
+            if (!CARD_PATTERN.test(card)) {
+                throw new Error(`Invalid card format: ${card}`);
+            }
             const suit = card.slice(-1);
             const rankStr = card.slice(0, -1) || "0";
             const rank = RANK_MAP[rankStr] ?? Number(rankStr);
@@ -149,11 +109,11 @@ export class PokerService {
         return deck;
     }
 
-    private getBaseDeck(): Card[] {
+    public getBaseDeck(): Card[] {
         return [...this.baseDeck];
     }
 
-    private shuffleDeck(deck: Card[]): Card[] {
+    public shuffleDeck(deck: Card[]): Card[] {
         for (let i = deck.length - 1; i > 0; i--) {
             const randomNum = Math.floor(Math.random() * (i + 1));
             [deck[i], deck[randomNum]] = [deck[randomNum], deck[i]];
@@ -161,22 +121,7 @@ export class PokerService {
         return deck;
     }
 
-    private initPlayerState(playerId: string): GameState {
-        const deck = this.shuffleDeck(this.getBaseDeck());
-        this.gameStates[playerId] = {
-            playerId: playerId,
-            deck: deck,
-            hand: [],
-            playsLeft: 5,
-            discardsLeft: 3,
-            round: 1,
-            score: 0,
-        };
-        Logger.log(`-${playerId}- initPlayerState: ${JSON.stringify(this.gameStates[playerId])}`);
-        return this.gameStates[playerId];
-    }
-
-    private serializeCards(cards: Card[]): string[] {
+    public serializeCards(cards: Card[]): string[] {
         return cards.map((card) => {
             const rank = NUMBER_TO_RANK_MAP[card.rank] ?? card.rank;
             return `${rank}${card.suit}`;

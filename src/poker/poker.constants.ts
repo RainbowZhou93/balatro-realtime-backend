@@ -31,4 +31,6 @@ const SUITS = ["H", "S", "D", "C"] as const;
 
 const RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
-export { CARD_TYPE, RANK_MAP, NUMBER_TO_RANK_MAP, SUITS, RANKS };
+const CARD_PATTERN = /^(A|K|Q|J|10|[2-9])[HSDC]$/;
+
+export { CARD_TYPE, RANK_MAP, NUMBER_TO_RANK_MAP, SUITS, RANKS, CARD_PATTERN };
