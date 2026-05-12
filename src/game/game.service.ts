@@ -118,31 +118,60 @@ export class GameService {
             return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_DISCARDS_LEFT, selectedCards, playerState);
         }
 
+        if (action == SELECT_CARD_ACTION.PLAY) {
+            const result = this.pokerService.calculateHandScore(selectedCards);
+            baseScore = result.baseScore;
+            multiplier = result.multiplier;
+            cardType = result.handType;
+            validCards = result.validCards;
+        }
+        playerState.totalScore += baseScore * multiplier;
+        playerState.currentActionScore = baseScore * multiplier;
+
         const newHand = this.removeAndDrawCards(selectedCards, handCards, playerState);
         playerState.hand = newHand;
         if (action == SELECT_CARD_ACTION.PLAY) playerState.playsLeft--;
         if (action == SELECT_CARD_ACTION.DISCARD) playerState.discardsLeft--;
 
+        if (this.isGameOver(playerState)) playerState.gameStatus = "finished";
         const returnMsg = this.buildSelectCardsResult(RESULT_CODE.SUCCESS, selectedCards, playerState);
+
         // this.logger.log(
         //     `-${playerId}- user hand cards: ${JSON.stringify(playerState.hand)}, remaining cards: ${JSON.stringify(playerState.deck)}`,
         // );
+        returnMsg.gameOver = playerState.gameStatus === "finished";
+        returnMsg.remainingDeckCount = playerState.deck.length;
+        returnMsg.cardType = cardType;
+        returnMsg.validCards = validCards;
+        returnMsg.baseScore = baseScore;
+        returnMsg.multiplier = multiplier;
+        if (returnMsg.gameOver) {
+            returnMsg.settlement = {
+                finalScore: playerState.totalScore,
+                targetScore: playerState.targetScore,
+                result: playerState.totalScore >= playerState.targetScore ? "WIN" : "LOSE",
+            };
+        }
         return returnMsg;
     }
 
-    private buildSelectCardsResult(code: number, selectedCards: string[], playerState?: GameState): PlayCardsResult {
-        let gameOver = false;
-        if (playerState && playerState.playsLeft <= 0) {
-            gameOver = true;
-        }
+    private buildSelectCardsResult(code: number, selectedCards: string[], playerState?: GameState): SelectCardsResult {
+        const playerStateResponse: GameStateResponse | undefined = playerState
+            ? {
+                  hand: playerState.hand,
+                  playsLeft: playerState.playsLeft,
+                  discardsLeft: playerState.discardsLeft,
+                  remainingDeckCount: playerState.deck.length,
+                  totalScore: playerState.totalScore,
+                  currentActionScore: playerState.currentActionScore,
+                  gameStatus: playerState.gameStatus,
+                  targetScore: playerState.targetScore,
+              }
+            : undefined;
         return {
             code,
-            hand: playerState?.hand || [],
-            playsLeft: playerState?.playsLeft ?? 0,
-            discardsLeft: playerState?.discardsLeft ?? 0,
-            remainingDeckCount: playerState?.deck.length || 0,
-            selectedCards: selectedCards,
-            gameOver,
+            selectedCards,
+            playerState: playerStateResponse,
         };
     }
 
@@ -160,6 +189,11 @@ export class GameService {
         const getDeck: string[] = this.pokerService.serializeCards(deck.splice(0, getSize));
 
         newHand.push(...getDeck);
+        //newHand = ["KC","8D","7C","AD","9D","8S","JH","AS"], 做排序，A最大，2最小
+        newHand.sort((a, b) => {
+            return this.pokerService.getCardRank(b) - this.pokerService.getCardRank(a);
+        });
+        // this.logger.log(`removeAndDrawCards selectedCards: ${JSON.stringify(newHand)}`);
         return newHand;
     }
 
@@ -188,5 +222,9 @@ export class GameService {
         };
         // Logger.log(`-${playerId}- initPlayerState: ${JSON.stringify(this.gameStates[playerId])}`);
         return this.gameStates[playerId];
+    }
+
+    private isGameOver(playerState: GameState): boolean {
+        return playerState.playsLeft <= 0 || playerState.totalScore >= playerState.targetScore;
     }
 }
