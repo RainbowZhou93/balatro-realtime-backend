@@ -3,7 +3,7 @@ import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
 
-import { GameState, PlayCardsResult, DealResult } from "./game.types";
+import { GameState, GameStateResponse, SelectCardsResult, DealResult } from "./game.types";
 import {
     RESULT_CODE,
     PLAYER_STATE_CODE,
@@ -11,6 +11,7 @@ import {
     GAME_FLOW_CODE,
     SELECT_CARD_ACTION,
     GAME_RULE,
+    GAME_STATE_CODE,
 } from "./game.constants";
 
 @Injectable()
@@ -29,50 +30,55 @@ export class GameService {
 
     constructor(private readonly pokerService: PokerService) {}
 
-    playCard(cards: string[]): number {
-        const handType = this.pokerService.getCardType(cards);
-        return handType;
-    }
-
-    // Temporary initial dealing method. It currently initializes player state and deals cards. This will be renamed or split into startGame/startRound when round settlement is introduced.
-    dealCards(data: { handSize: number; round: number }, playerId: string): DealResult {
+    // Start a new single-player game by initializing state, shuffling deck, and dealing the initial hand.
+    startGame(playerId: string): DealResult {
         let playerState: GameState;
 
-        // Temporary round progression logic. This will be refactored when score calculation and round settlement are introduced.
-        if (data.round === 1) {
-            playerState = this.gameStates[playerId];
-            if (!playerState) {
-                playerState = this.initPlayerState(playerId);
-            }
-        } else {
-            playerState = this.gameStates[playerId];
+        playerState = this.gameStates[playerId];
+        const handSize: number = playerState?.handSize ?? GAME_RULE.DEFAULT_HAND_SIZE;
+        if (playerState?.gameStatus == "playing") {
+            return {
+                code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
+                hand: playerState.hand,
+                remainingDeckCount: playerState.deck.length,
+                playsLeft: playerState.playsLeft,
+                discardsLeft: playerState.discardsLeft,
+            };
         }
+        playerState = this.initPlayerState(playerId);
 
-        // Safety check: the player state should exist after the game starts.
-        if (!playerState) {
-            return { hand: [], remainingDeckCount: 0, playsLeft: 0 };
-        }
         const deck = playerState.deck;
-        const hand = this.pokerService.serializeCards(deck.splice(0, data.handSize));
+        const hand = this.pokerService.serializeCards(deck.splice(0, handSize));
+        hand.sort((a, b) => {
+            return this.pokerService.getCardRank(b) - this.pokerService.getCardRank(a);
+        });
         playerState.hand = hand;
         playerState.deck = deck;
 
-        if (data.round != 1) playerState.playsLeft--;
-
         const dealResult = {
+            code: RESULT_CODE.SUCCESS,
             hand,
             remainingDeckCount: playerState.deck.length,
             playsLeft: playerState.playsLeft,
+            discardsLeft: playerState.discardsLeft,
         };
 
         return dealResult;
     }
 
     //统一处理出牌和弃牌：两者都会移除所选手牌并自动补牌，区别是扣减不同的操作次数。
-    selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): PlayCardsResult {
+    selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): SelectCardsResult {
         const playerState: GameState = this.gameStates[playerId];
+        let cardType: number = 0;
+        let baseScore: number = 0;
+        let multiplier: number = 0;
+        let validCards: string[] = [];
         if (!playerId || !playerState) {
             return this.buildSelectCardsResult(PLAYER_STATE_CODE.NOT_FOUND, selectedCards);
+        }
+
+        if (playerState.gameStatus !== "playing") {
+            return this.buildSelectCardsResult(GAME_STATE_CODE.GAME_ALREADY_FINISHED, selectedCards, playerState);
         }
 
         const handCards: string[] = playerState.hand;
@@ -159,15 +165,26 @@ export class GameService {
 
     private initPlayerState(playerId: string): GameState {
         const deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
+        let round = 1;
+        let playsLeft: number = GAME_RULE.INITIAL_PLAYS_LEFT;
+        let discardsLeft: number = GAME_RULE.INITIAL_DISCARDS_LEFT;
+        if (this.gameStates[playerId]) {
+            round = this.gameStates[playerId].round + 1;
+            playsLeft = this.gameStates[playerId].playsLeft ?? GAME_RULE.INITIAL_PLAYS_LEFT;
+            discardsLeft = this.gameStates[playerId].discardsLeft ?? GAME_RULE.INITIAL_DISCARDS_LEFT;
+        }
         this.gameStates[playerId] = {
             playerId: playerId,
             deck: deck,
             hand: [],
-            playsLeft: GAME_RULE.INITIAL_PLAYS_LEFT,
-            discardsLeft: GAME_RULE.INITIAL_DISCARDS_LEFT,
-            round: 1,
-            score: 0,
+            playsLeft,
+            discardsLeft,
+            round: round,
+            totalScore: 0,
+            currentActionScore: 0,
             handSize: GAME_RULE.DEFAULT_HAND_SIZE,
+            gameStatus: "playing",
+            targetScore: GAME_RULE.INITIAL_TARGET_SCORE,
         };
         // Logger.log(`-${playerId}- initPlayerState: ${JSON.stringify(this.gameStates[playerId])}`);
         return this.gameStates[playerId];

@@ -12,21 +12,50 @@ export type GameState = {
 
     round: number; // Which move is it currently
 
-    score: number;
+    totalScore: number;
+    targetScore: number; // The score that the player needs to reach to win, default is 300, can be customized for different difficulty levels.
+    currentActionScore: number;
+
+    gameStatus: "playing" | "finished";
 };
 
-export type PlayCardsResult = {
-    code: number;
+export type GameStateResponse = {
     hand: string[];
+
     playsLeft: number;
     discardsLeft: number;
+
     remainingDeckCount: number;
+
+    totalScore: number;
+    currentActionScore: number;
+
+    gameStatus: "playing" | "finished";
+
+    targetScore: number;
+};
+
+export type SelectCardsResult = {
+    code: number;
     selectedCards: string[];
-    gameOver: boolean;
+    gameOver?: boolean;
+    remainingDeckCount?: number;
+    playerState?: GameStateResponse;
+    cardType?: number;
+    validCards?: string[];
+    baseScore?: number;
+    multiplier?: number;
+    settlement?: {
+        finalScore: number;
+        targetScore: number;
+        result: string;
+    };
 };
 
 export type DealResult = {
-    hand: string[];
-    remainingDeckCount: number;
-    playsLeft: number;
+    code: number;
+    hand?: string[];
+    remainingDeckCount?: number;
+    playsLeft?: number;
+    discardsLeft?: number;
 };

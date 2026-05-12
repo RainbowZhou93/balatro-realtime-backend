@@ -75,6 +75,12 @@ export class PokerService {
         });
     }
 
+    public serializeCards(cards: Card[]): string[] {
+        return cards.map((card) => {
+            const rank = NUMBER_TO_RANK_MAP[card.rank] ?? card.rank;
+            return `${rank}${card.suit}`;
+        });
+    }
     /**
      * @param cards: [{rank:10,suit:"H"},{rank:11,suit:"D"},{rank:12,suit:"S"},{rank:13,suit:"C"},{rank:14,suit:"D"}]
      * @returns: { "3": 1, "5": 1, "8": 1, "10": 1, "11": 1 }

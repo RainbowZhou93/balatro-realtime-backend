@@ -1,6 +1,5 @@
-type Suit = "H" | "S" | "D" | "C";
-type HandType =
-    | "royalFlush"
+export type Suit = "H" | "S" | "D" | "C";
+export type HandType =
     | "straightFlush"
     | "fourOfAKind"
     | "fullHouse"
@@ -11,9 +10,12 @@ type HandType =
     | "onePair"
     | "highCard";
 
-interface Card {
+export interface Card {
     rank: number;
     suit: Suit;
 }
 
-export type { Suit, HandType, Card };
+export interface HandEvaluateResult {
+    cardType: number;
+    validCards: Card[];
+}

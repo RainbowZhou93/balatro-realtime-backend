@@ -20,6 +20,12 @@ export const GAME_FLOW_CODE = {
     NO_DISCARDS_LEFT: 402, // The current player has no discards left.
 } as const;
 
+export const GAME_STATE_CODE = {
+    GAME_ALREADY_STARTED: 451, // The game is already in progress.
+    GAME_NOT_STARTED: 452, // The game has not been started yet.
+    GAME_ALREADY_FINISHED: 453, // The game has already finished, waiting for restart.
+} as const;
+
 export const SELECT_CARD_ACTION = {
     PLAY: "play",
     DISCARD: "discard",
@@ -30,4 +36,5 @@ export const GAME_RULE = {
     INITIAL_PLAYS_LEFT: 5,
     INITIAL_DISCARDS_LEFT: 3,
     DEFAULT_HAND_SIZE: 8,
+    INITIAL_TARGET_SCORE: 300,
 } as const;

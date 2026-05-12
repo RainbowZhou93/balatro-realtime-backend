@@ -47,23 +47,14 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
-    @SubscribeMessage("handEvaluator")
-    handleHandEvaluator(@MessageBody() data: string[]): object {
-        const handType = this.gameService.playCard(data);
-        return { event: "handEvaluator", data: { handType } };
-    }
-
-    @SubscribeMessage("dealCards")
-    handleDealCards(
-        @MessageBody() data: { handSize: number; round: number },
-        @ConnectedSocket() client: GatewayClient,
-    ): object {
+    @SubscribeMessage("startGame")
+    handleStartGame(@MessageBody() data: object, @ConnectedSocket() client: GatewayClient): object {
         const playerId = client.__clientId;
         if (!playerId)
             return { event: "error", data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required" } };
 
-        const dealResult = this.gameService.dealCards(data, playerId);
-        return { event: "dealCards", data: dealResult };
+        const dealResult = this.gameService.startGame(playerId);
+        return { event: "startGame", data: dealResult };
     }
 
     @SubscribeMessage("selectCards")
@@ -76,6 +67,6 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
             return { event: "error", data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required" } };
 
         const selectCardsResult = this.gameService.selectCards(data.selectedCards, data.action, playerId);
-        return { event: "selectCardsResult", dara: selectCardsResult };
+        return { event: "selectCardsResult", data: selectCardsResult };
     }
 }
