@@ -1,4 +1,5 @@
 import { PokerService } from "./poker.service";
+import { CARD_TYPE } from "./poker.constants";
 
 describe("PokerService.getCardType", () => {
     let service: PokerService;
@@ -14,63 +15,102 @@ describe("PokerService.getCardType", () => {
         console.info(`[PokerService.spec] Case: ${expect.getState().currentTestName}`);
     });
 
-    it("royal flush — 10 J Q K A of the same suit, returns 10", () => {
-        expect(service.getCardType(["10H", "JH", "QH", "KH", "AH"])).toBe(10);
+    it("should identify straight flush", () => {
+        const result = service.getCardType(["5D", "6D", "7D", "8D", "9D"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.straightFlush);
+        expect(result.validCards).toHaveLength(5);
     });
 
-    it("royal flush — still detected when cards are out of order", () => {
-        expect(service.getCardType(["QH", "10H", "AH", "JH", "KH"])).toBe(10);
+    it("should identify A-2-3-4-5 as straight flush when suited", () => {
+        const result = service.getCardType(["AH", "2H", "3H", "4H", "5H"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.straightFlush);
+        expect(result.validCards).toHaveLength(5);
     });
 
-    it("straight flush — suited consecutive ranks (not 10-A), returns 9", () => {
-        expect(service.getCardType(["5D", "6D", "7D", "8D", "9D"])).toBe(9);
+    it("should identify four of a kind and return only the 4 matching cards", () => {
+        const result = service.getCardType(["7H", "7D", "7S", "7C", "KH"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.fourOfAKind);
+        expect(result.validCards).toHaveLength(4);
+        expect(result.validCards.every((card) => card.rank === 7)).toBe(true);
     });
 
-    it("straight flush — A-2-3-4-5 suited with A as low card, returns 9", () => {
-        expect(service.getCardType(["AH", "2H", "3H", "4H", "5H"])).toBe(9);
+    it("should identify full house", () => {
+        const result = service.getCardType(["9H", "9D", "9S", "2H", "2C"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.fullHouse);
+        expect(result.validCards).toHaveLength(5);
     });
 
-    it("four of a kind — four cards of the same rank, returns 8", () => {
-        expect(service.getCardType(["7H", "7D", "7S", "7C", "KH"])).toBe(8);
+    it("should identify flush", () => {
+        const result = service.getCardType(["2H", "5H", "7H", "9H", "JH"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.flush);
+        expect(result.validCards).toHaveLength(5);
     });
 
-    it("full house — three of a kind plus a pair, returns 7", () => {
-        expect(service.getCardType(["9H", "9D", "9S", "2H", "2C"])).toBe(7);
+    it("should identify straight", () => {
+        const result = service.getCardType(["4H", "5D", "6S", "7C", "8H"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.straight);
+        expect(result.validCards).toHaveLength(5);
     });
 
-    it("flush — five cards of the same suit, not a straight, returns 6", () => {
-        expect(service.getCardType(["2H", "5H", "7H", "9H", "JH"])).toBe(6);
+    it("should identify A-2-3-4-5 as straight when unsuited", () => {
+        const result = service.getCardType(["AH", "2D", "3S", "4C", "5H"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.straight);
+        expect(result.validCards).toHaveLength(5);
     });
 
-    it("straight — five consecutive ranks, not same suit, returns 5", () => {
-        expect(service.getCardType(["4H", "5D", "6S", "7C", "8H"])).toBe(5);
+    it("should identify three of a kind and return only the 3 matching cards", () => {
+        const result = service.getCardType(["JH", "JD", "JS", "3H", "7C"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.threeOfAKind);
+        expect(result.validCards).toHaveLength(3);
+        expect(result.validCards.every((card) => card.rank === 11)).toBe(true);
     });
 
-    it("straight — A-2-3-4-5 with A as low card (not same suit), returns 5", () => {
-        expect(service.getCardType(["AH", "2D", "3S", "4C", "5H"])).toBe(5);
+    it("should identify two pair and return only paired cards", () => {
+        const result = service.getCardType(["KH", "KD", "4S", "4C", "9H"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.twoPair);
+        expect(result.validCards).toHaveLength(4);
+        const ranks = result.validCards.map((card) => card.rank).sort((a, b) => a - b);
+        expect(ranks).toEqual([4, 4, 13, 13]);
     });
 
-    it("three of a kind — three cards of the same rank, no pair, returns 4", () => {
-        expect(service.getCardType(["JH", "JD", "JS", "3H", "7C"])).toBe(4);
+    it("should identify one pair and return only paired cards", () => {
+        const result = service.getCardType(["AH", "AD", "3S", "7C", "10H"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.onePair);
+        expect(result.validCards).toHaveLength(2);
+        expect(result.validCards.every((card) => card.rank === 14)).toBe(true);
     });
 
-    it("two pair — two distinct pairs, returns 3", () => {
-        expect(service.getCardType(["KH", "KD", "4S", "4C", "9H"])).toBe(3);
+    it("should identify high card and return the highest single card", () => {
+        const result = service.getCardType(["2H", "5D", "7S", "9C", "JH"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.highCard);
+        expect(result.validCards).toHaveLength(1);
+        expect(result.validCards[0].rank).toBe(11);
     });
 
-    it("one pair — exactly one pair, returns 2", () => {
-        expect(service.getCardType(["AH", "AD", "3S", "7C", "10H"])).toBe(2);
+    it("should identify high card correctly for less than 5 cards", () => {
+        const result = service.getCardType(["10H", "JD", "3S"]);
+
+        expect(result.cardType).toBe(CARD_TYPE.highCard);
+        expect(result.validCards).toHaveLength(1);
+        expect(result.validCards[0].rank).toBe(11);
     });
 
-    it("high card — no matching hand, returns 1", () => {
-        expect(service.getCardType(["2H", "5D", "7S", "9C", "JH"])).toBe(1);
+    it("should throw for invalid suit", () => {
+        expect(() => service.getCardType(["5X"])).toThrow("Invalid card format");
     });
 
-    it("invalid card — unknown suit should throw", () => {
-        expect(() => service.getCardType(["5X"])).toThrow();
-    });
-
-    it("invalid card — unknown rank should throw", () => {
-        expect(() => service.getCardType(["ZH"])).toThrow();
+    it("should throw for invalid rank", () => {
+        expect(() => service.getCardType(["ZH"])).toThrow("Invalid card format");
     });
 });
