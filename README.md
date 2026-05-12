@@ -1,6 +1,7 @@
 ## Status
 
-🚧 Currently in Phase 1: Single game flow (deck, shuffle, dealing, state management)
+🚧 Currently in Phase 1: Single-game lifecycle implementation  
+(deck management, hand operations, scoring, round settlement, and state flow)
 
 # balatro-realtime-backend
 
@@ -9,6 +10,7 @@
 A realtime backend system for a Balatro-like card game, built with Node.js, TypeScript, NestJS and WebSocket.
 
 This project is not only a game logic practice, but also a long-term backend engineering project.
+This project is inspired by Balatro, but focuses primarily on backend architecture and realtime game state management rather than recreating the original game entirely.
 The goal is to gradually implement core backend capabilities through a complete card game server, including state management, cache layering, persistence, recovery, testing and extensibility.
 
 本项目用于从 0 到 1 实现一个 Balatro 风格的游戏后端，并逐步进行工程化改造。  
@@ -39,14 +41,16 @@ The goal is to gradually implement core backend capabilities through a complete 
 
 ---
 
-## Architecture (WIP)
+## Backend Architecture
 
 Current structure (Phase 1):
 
 - WebSocket Gateway (entry point)
 - Game Service (orchestration layer)
 - Poker Service (core game logic)
-- In-memory state (per player)
+- State-driven single-game lifecycle management
+- In-memory per-player runtime state
+- Scoring and settlement system
 
 Future improvements:
 
@@ -83,6 +87,18 @@ The system is evolving from a simple stateless logic into a state-driven game en
 
 ---
 
+## Current Features
+
+- WebSocket realtime game flow
+- Server-side deck state management
+- Hand evaluation system
+- Play / discard / draw mechanics
+- Scoring calculation
+- Round settlement
+- Game lifecycle management
+- Unit testing with Jest
+
+---
 ## Current Progress
 
 Phase 1 - Single game flow
@@ -97,6 +113,13 @@ Phase 1 - Single game flow
 ✔ Implement card dealing logic  
 ✔ Introduce server-side deck state management (per player)  
 ✔ Add unit tests for dealing logic
+✔ Rename dealCards to startGame lifecycle
+✔ Implement play / discard unified flow
+✔ Add hand scoring calculation
+✔ Add round settlement logic
+✔ Add game over state management
+✔ Add target score & win/lose settlement
+✔ Refactor and extend unit tests
 
 ---
 
@@ -123,21 +146,12 @@ npm run start:prod
 - Connect to: `ws://localhost:8088`.
 - Send the following message: 
 
-**handEvaluator**
+**startGame**
 ```json
 {
-    "event":"handEvaluator",
-    "data": ["QH", "10H", "AH", "JH", "KH"]
-}
-```
-
-**dealCards**
-```json
-{
-    "event": "dealCards",
+    "event": "startGame",
     "data": {
-        "handSize": 8,
-        "round": 1
+       
     }
 }
 ```
@@ -152,7 +166,13 @@ npm run start:prod
     }
 }
 ```
-
+Response includes:
+- Updated hand
+- Current score
+- Total score
+- Remaining plays/discards
+- Settlement result
+- Game over state
 
 ### 3. Run tests
 
@@ -178,30 +198,33 @@ npm test
 
 ### Core Series
 
-1. Project planning and card type judgment 
-   从0到1实现 Balatro 游戏后端（1）：项目规划与牌型判断实现
+1. Project planning and card type judgment     
+   从0到1实现 Balatro 游戏后端（1）：项目规划与牌型判断实现     
    🔗 (coming soon)
 
 2. NestJS Setup and Project Structure Design  
-   从0到1实现 Balatro 游戏后端（2）：NestJS框架搭建与项目结构设计
+   从0到1实现 Balatro 游戏后端（2）：NestJS框架搭建与项目结构设计     
    🔗 (coming soon)
 
-3. Shuffling, Dealing, and Server-Side Deck State Management  
-   从0到1实现Balatro游戏后端（3）：洗牌、发牌与服务端牌堆状态管理
+3. Shuffling, Dealing, and Server-Side Deck State Management       
+   从0到1实现Balatro游戏后端（3）：洗牌、发牌与服务端牌堆状态管理     
    🔗 (coming soon)
 
-4. Player Hand Operations (Play / Discard / Draw) and State Flow Design  
-   从0到1实现Balatro游戏后端（4）：玩家手牌操作（出牌 / 弃牌 / 补牌）与状态流转设计  
+4. Player Hand Operations (Play / Discard / Draw) and State Flow Design       
+   从0到1实现Balatro游戏后端（4）：玩家手牌操作（出牌 / 弃牌 / 补牌）与状态流转设计       
    🔗 (coming soon)
 
+5. Scoring Calculation and Single-Game Settlement Flow
+   从0到1实现Balatro游戏后端（5）：得分计算与单局结算流程实现  
+   🔗 (coming soon)
 ### Advanced Topics
 
-1. Custom NestJS WebSocket Adapter for Message Interception  
-   Balatro后端进阶（1）：自定义NestJS WebSocket Adapter实现消息拦截
+1. Custom NestJS WebSocket Adapter for Message Interception       
+   Balatro后端进阶（1）：自定义NestJS WebSocket Adapter实现消息拦截     
    🔗 (coming soon)
 
-2. CI Automation with GitHub Actions for NestJS Projects
-   Balatro后端进阶（2）：基于GitHub Actions的CI自动化
+2. CI Automation with GitHub Actions for NestJS Projects     
+   Balatro后端进阶（2）：基于GitHub Actions的CI自动化     
    🔗 (coming soon)
 
 (Updating...)
