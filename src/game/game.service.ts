@@ -3,7 +3,7 @@ import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
 
-import { GameState, GameStateResponse, SelectCardsResult, DealResult } from "./game.types";
+import { GameState, PlayerState, BlindState, GameStateResponse, SelectCardsResult, DealResult } from "./game.types";
 import {
     RESULT_CODE,
     PLAYER_STATE_CODE,
@@ -32,11 +32,13 @@ export class GameService {
 
     // Start a new single-player game by initializing state, shuffling deck, and dealing the initial hand.
     startGame(playerId: string): DealResult {
-        let playerState: GameState;
+        let gameState: GameState;
+        let playerState: PlayerState;
+        gameState = this.gameStates[playerId];
 
-        playerState = this.gameStates[playerId];
+        playerState = this.gameStates[playerId]?.playerState;
         const handSize: number = playerState?.handSize ?? GAME_RULE.DEFAULT_HAND_SIZE;
-        if (playerState?.gameStatus == "playing") {
+        if (gameState?.gameStatus == "playing") {
             return {
                 code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
                 hand: playerState.hand,
@@ -45,7 +47,8 @@ export class GameService {
                 discardsLeft: playerState.discardsLeft,
             };
         }
-        playerState = this.initPlayerState(playerId);
+        gameState = this.initGameState(playerId, gameState, playerState);
+        playerState = gameState.playerState;
 
         const deck = playerState.deck;
         const hand = this.pokerService.serializeCards(deck.splice(0, handSize));
@@ -68,54 +71,56 @@ export class GameService {
 
     //统一处理出牌和弃牌：两者都会移除所选手牌并自动补牌，区别是扣减不同的操作次数。
     selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): SelectCardsResult {
-        const playerState: GameState = this.gameStates[playerId];
+        const gameState: GameState = this.gameStates[playerId];
+        const playerState: PlayerState = gameState?.playerState;
+        const blindState: BlindState = gameState?.blindState;
         let cardType: number = 0;
         let baseScore: number = 0;
         let multiplier: number = 0;
         let validCards: string[] = [];
-        if (!playerId || !playerState) {
-            return this.buildSelectCardsResult(PLAYER_STATE_CODE.NOT_FOUND, selectedCards);
+        if (!playerId || !gameState) {
+            return { code: PLAYER_STATE_CODE.NOT_FOUND, selectedCards };
         }
 
-        if (playerState.gameStatus !== "playing") {
-            return this.buildSelectCardsResult(GAME_STATE_CODE.GAME_ALREADY_FINISHED, selectedCards, playerState);
+        if (gameState.gameStatus !== "playing") {
+            return this.buildSelectCardsResult(GAME_STATE_CODE.GAME_ALREADY_FINISHED, selectedCards, gameState);
         }
 
         const handCards: string[] = playerState.hand;
 
         if (!selectedCards?.length) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, selectedCards, playerState);
+            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, selectedCards, gameState);
         }
 
         if (selectedCards?.length > GAME_RULE.MAX_SELECT_CARDS) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, selectedCards, playerState);
+            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, selectedCards, gameState);
         }
 
         const validCard = selectedCards.every((card) => CARD_PATTERN.test(card));
         if (!validCard) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, selectedCards, playerState);
+            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, selectedCards, gameState);
         }
 
         const selectedSet = new Set(selectedCards);
         if (selectedSet.size !== selectedCards.length) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, selectedCards, playerState);
+            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, selectedCards, gameState);
         }
 
         const existCards = selectedCards.every((item) => handCards.includes(item));
         if (!existCards) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, selectedCards, playerState);
+            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, selectedCards, gameState);
         }
 
         if (action !== SELECT_CARD_ACTION.PLAY && action !== SELECT_CARD_ACTION.DISCARD) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.INVALID_ACTION, selectedCards, playerState);
+            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.INVALID_ACTION, selectedCards, gameState);
         }
 
         if (action == SELECT_CARD_ACTION.PLAY && playerState.playsLeft <= 0) {
-            return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_PLAYS_LEFT, selectedCards, playerState);
+            return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_PLAYS_LEFT, selectedCards, gameState);
         }
 
         if (action == SELECT_CARD_ACTION.DISCARD && playerState.discardsLeft <= 0) {
-            return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_DISCARDS_LEFT, selectedCards, playerState);
+            return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_DISCARDS_LEFT, selectedCards, gameState);
         }
 
         if (action == SELECT_CARD_ACTION.PLAY) {
@@ -125,21 +130,21 @@ export class GameService {
             cardType = result.handType;
             validCards = result.validCards;
         }
-        playerState.totalScore += baseScore * multiplier;
+        blindState.currentBlindScore += baseScore * multiplier;
         playerState.currentActionScore = baseScore * multiplier;
 
-        const newHand = this.removeAndDrawCards(selectedCards, handCards, playerState);
+        const newHand = this.removeAndDrawCards(selectedCards, handCards, gameState);
         playerState.hand = newHand;
         if (action == SELECT_CARD_ACTION.PLAY) playerState.playsLeft--;
         if (action == SELECT_CARD_ACTION.DISCARD) playerState.discardsLeft--;
 
-        if (this.isGameOver(playerState)) playerState.gameStatus = "finished";
-        const returnMsg = this.buildSelectCardsResult(RESULT_CODE.SUCCESS, selectedCards, playerState);
+        if (this.isGameOver(playerState, gameState)) gameState.gameStatus = "finished";
+        const returnMsg = this.buildSelectCardsResult(RESULT_CODE.SUCCESS, selectedCards, gameState);
 
         // this.logger.log(
         //     `-${playerId}- user hand cards: ${JSON.stringify(playerState.hand)}, remaining cards: ${JSON.stringify(playerState.deck)}`,
         // );
-        returnMsg.gameOver = playerState.gameStatus === "finished";
+        returnMsg.gameOver = gameState.gameStatus === "finished";
         returnMsg.remainingDeckCount = playerState.deck.length;
         returnMsg.cardType = cardType;
         returnMsg.validCards = validCards;
@@ -147,27 +152,26 @@ export class GameService {
         returnMsg.multiplier = multiplier;
         if (returnMsg.gameOver) {
             returnMsg.settlement = {
-                finalScore: playerState.totalScore,
-                targetScore: playerState.targetScore,
-                result: playerState.totalScore >= playerState.targetScore ? "WIN" : "LOSE",
+                finalScore: blindState.currentBlindScore,
+                targetScore: blindState.targetScore,
+                result: blindState.currentBlindScore >= blindState.targetScore ? "WIN" : "LOSE",
             };
         }
         return returnMsg;
     }
 
-    private buildSelectCardsResult(code: number, selectedCards: string[], playerState?: GameState): SelectCardsResult {
-        const playerStateResponse: GameStateResponse | undefined = playerState
-            ? {
-                  hand: playerState.hand,
-                  playsLeft: playerState.playsLeft,
-                  discardsLeft: playerState.discardsLeft,
-                  remainingDeckCount: playerState.deck.length,
-                  totalScore: playerState.totalScore,
-                  currentActionScore: playerState.currentActionScore,
-                  gameStatus: playerState.gameStatus,
-                  targetScore: playerState.targetScore,
-              }
-            : undefined;
+    private buildSelectCardsResult(code: number, selectedCards: string[], gameState: GameState): SelectCardsResult {
+        const playerState: PlayerState = gameState.playerState;
+        const playerStateResponse: GameStateResponse = {
+            hand: playerState.hand,
+            playsLeft: playerState.playsLeft,
+            discardsLeft: playerState.discardsLeft,
+            remainingDeckCount: playerState.deck.length,
+            currentBlindScore: gameState.blindState.currentBlindScore,
+            currentActionScore: playerState.currentActionScore,
+            gameStatus: gameState.gameStatus,
+            targetScore: gameState.blindState.targetScore,
+        };
         return {
             code,
             selectedCards,
@@ -176,16 +180,16 @@ export class GameService {
     }
 
     // Based on the current player state, remove selected cards from hand and draw the same number of cards from deck.
-    private removeAndDrawCards(selectedCards: string[], handCards: string[], playerState: GameState): string[] {
+    private removeAndDrawCards(selectedCards: string[], handCards: string[], gameState: GameState): string[] {
         const newHand: string[] = [];
-        const deck: Card[] = playerState.deck;
+        const deck: Card[] = gameState.playerState.deck;
         for (let i = 0; i < handCards.length; i++) {
             if (!selectedCards.includes(handCards[i])) {
                 newHand.push(handCards[i]);
             }
         }
 
-        const getSize: number = playerState.handSize - newHand.length;
+        const getSize: number = gameState.playerState.handSize - newHand.length;
         const getDeck: string[] = this.pokerService.serializeCards(deck.splice(0, getSize));
 
         newHand.push(...getDeck);
@@ -197,34 +201,40 @@ export class GameService {
         return newHand;
     }
 
-    private initPlayerState(playerId: string): GameState {
+    private initGameState(playerId: string, gameState: GameState, playerState: PlayerState): GameState {
         const deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
         let round = 1;
         let playsLeft: number = GAME_RULE.INITIAL_PLAYS_LEFT;
         let discardsLeft: number = GAME_RULE.INITIAL_DISCARDS_LEFT;
-        if (this.gameStates[playerId]) {
-            round = this.gameStates[playerId].round + 1;
-            playsLeft = this.gameStates[playerId].playsLeft ?? GAME_RULE.INITIAL_PLAYS_LEFT;
-            discardsLeft = this.gameStates[playerId].discardsLeft ?? GAME_RULE.INITIAL_DISCARDS_LEFT;
+        if (gameState) {
+            round = gameState.blindState.round + 1;
+            playsLeft = playerState.playsLeft ?? GAME_RULE.INITIAL_PLAYS_LEFT;
+            discardsLeft = playerState.discardsLeft ?? GAME_RULE.INITIAL_DISCARDS_LEFT;
         }
         this.gameStates[playerId] = {
             playerId: playerId,
-            deck: deck,
-            hand: [],
-            playsLeft,
-            discardsLeft,
-            round: round,
-            totalScore: 0,
-            currentActionScore: 0,
-            handSize: GAME_RULE.DEFAULT_HAND_SIZE,
+            playerState: {
+                deck: deck,
+                hand: [],
+                playsLeft,
+                discardsLeft,
+                handSize: GAME_RULE.DEFAULT_HAND_SIZE,
+                currentActionScore: 0,
+            },
+            blindState: {
+                round: round,
+                ante: Math.floor((round - 1) / 3) + 1,
+                blindType: "small",
+                targetScore: GAME_RULE.INITIAL_TARGET_SCORE,
+                currentBlindScore: 0,
+            },
             gameStatus: "playing",
-            targetScore: GAME_RULE.INITIAL_TARGET_SCORE,
         };
         // Logger.log(`-${playerId}- initPlayerState: ${JSON.stringify(this.gameStates[playerId])}`);
         return this.gameStates[playerId];
     }
 
-    private isGameOver(playerState: GameState): boolean {
-        return playerState.playsLeft <= 0 || playerState.totalScore >= playerState.targetScore;
+    private isGameOver(playerState: PlayerState, gameState: GameState): boolean {
+        return playerState.playsLeft <= 0 || gameState.blindState.currentBlindScore >= gameState.blindState.targetScore;
     }
 }
