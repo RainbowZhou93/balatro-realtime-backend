@@ -74,7 +74,7 @@ export class GameService {
             blindType: gameState.blindState.blindType,
             targetScore: gameState.blindState.targetScore,
         };
-        this.logger.log(`-${playerId}- startGame playerState: ${JSON.stringify(gameState)}`);
+        // this.logger.log(`-${playerId}- startGame playerState: ${JSON.stringify(gameState)}`);
         return dealResult;
     }
 
