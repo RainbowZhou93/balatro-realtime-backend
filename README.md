@@ -1,7 +1,7 @@
 ## Status
 
-🚧 Currently in Phase 1: Single-game lifecycle implementation  
-(deck management, hand operations, scoring, round settlement, and state flow)
+🚧 Currently in Phase 2: Blind / stage system
+
 
 # balatro-realtime-backend
 
@@ -43,22 +43,35 @@ The goal is to gradually implement core backend capabilities through a complete 
 
 ## Backend Architecture
 
-Current structure (Phase 1):
+Current structure (Phase 2):
 
 - WebSocket Gateway (entry point)
 - Game Service (orchestration layer)
-- Poker Service (core game logic)
-- State-driven single-game lifecycle management
+- Poker Service (card rules and scoring logic)
+- State-driven game lifecycle management
 - In-memory per-player runtime state
-- Scoring and settlement system
+- Player state management
+- Blind / Ante / Round state management
+- Blind score configuration
+- Basic Blind progression and settlement flow
+
+Current state structure:
+
+- GameState
+  - playerState: player hand, deck, plays/discards, hand size
+  - blindState: round, ante, blind type, target score, current blind score
+  - gameStatus: current game lifecycle status
 
 Future improvements:
 
 - Redis for state persistence
 - MySQL for long-term storage
 - Distributed session handling
+- Boss Blind special rules
+- Skip Blind reward system
+- Shop and modifier system
 
-The system is evolving from a simple stateless logic into a state-driven game engine.
+The system is evolving from a single-game lifecycle into a staged game engine with Blind-based progression.
 
 ---
 
@@ -97,6 +110,10 @@ The system is evolving from a simple stateless logic into a state-driven game en
 - Round settlement
 - Game lifecycle management
 - Unit testing with Jest
+- Blind state management
+- Blind score config
+- Round / Ante / BlindType progression
+- Win / lose settlement for Blind stages
 
 ---
 ## Current Progress
@@ -120,6 +137,17 @@ Phase 1 - Single game flow
 ✔ Add game over state management
 ✔ Add target score & win/lose settlement
 ✔ Refactor and extend unit tests
+
+Phase 2 - Blind / stage system
+
+✔ Refactor GameState into playerState and blindState  
+✔ Add Blind score configuration  
+✔ Add round / ante / blindType state  
+✔ Add currentBlindScore and targetScore tracking  
+✔ Implement basic Blind win / lose settlement  
+✔ Advance to next Blind after clearing current Blind  
+✔ Reset game state after failure  
+✔ Update unit tests for Blind progression  
 
 ---
 
@@ -214,9 +242,14 @@ npm test
    从0到1实现Balatro游戏后端（4）：玩家手牌操作（出牌 / 弃牌 / 补牌）与状态流转设计       
    🔗 (coming soon)
 
-5. Scoring Calculation and Single-Game Settlement Flow
+5. Scoring Calculation and Single-Game Settlement Flow      
    从0到1实现Balatro游戏后端（5）：得分计算与单局结算流程实现  
    🔗 (coming soon)
+
+6. Blind Stage State Design and Round Progression     
+   从0到1实现Balatro游戏后端（6）：Blind关卡状态设计与回合推进实现       
+   🔗 (coming soon)     
+
 ### Advanced Topics
 
 1. Custom NestJS WebSocket Adapter for Message Interception       
