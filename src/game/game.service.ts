@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
+import { BLIND_SCORE_CONFIG } from "./blind.config";
 
 import { GameState, PlayerState, BlindState, GameStateResponse, SelectCardsResult, DealResult } from "./game.types";
 import {
@@ -45,9 +46,13 @@ export class GameService {
                 remainingDeckCount: playerState.deck.length,
                 playsLeft: playerState.playsLeft,
                 discardsLeft: playerState.discardsLeft,
+                round: gameState.blindState.round,
+                ante: gameState.blindState.ante,
+                blindType: gameState.blindState.blindType,
+                targetScore: gameState.blindState.targetScore,
             };
         }
-        gameState = this.initGameState(playerId, gameState, playerState);
+        gameState = this.initGameState(playerId, gameState);
         playerState = gameState.playerState;
 
         const deck = playerState.deck;
@@ -55,8 +60,8 @@ export class GameService {
         hand.sort((a, b) => {
             return this.pokerService.getCardRank(b) - this.pokerService.getCardRank(a);
         });
+
         playerState.hand = hand;
-        playerState.deck = deck;
 
         const dealResult = {
             code: RESULT_CODE.SUCCESS,
@@ -64,8 +69,12 @@ export class GameService {
             remainingDeckCount: playerState.deck.length,
             playsLeft: playerState.playsLeft,
             discardsLeft: playerState.discardsLeft,
+            round: gameState.blindState.round,
+            ante: gameState.blindState.ante,
+            blindType: gameState.blindState.blindType,
+            targetScore: gameState.blindState.targetScore,
         };
-
+        this.logger.log(`-${playerId}- startGame playerState: ${JSON.stringify(gameState)}`);
         return dealResult;
     }
 
@@ -129,33 +138,46 @@ export class GameService {
             multiplier = result.multiplier;
             cardType = result.handType;
             validCards = result.validCards;
+
+            blindState.currentBlindScore += baseScore * multiplier;
+            playerState.currentActionScore = baseScore * multiplier;
+        } else {
+            playerState.currentActionScore = 0;
         }
-        blindState.currentBlindScore += baseScore * multiplier;
-        playerState.currentActionScore = baseScore * multiplier;
 
         const newHand = this.removeAndDrawCards(selectedCards, handCards, gameState);
         playerState.hand = newHand;
         if (action == SELECT_CARD_ACTION.PLAY) playerState.playsLeft--;
         if (action == SELECT_CARD_ACTION.DISCARD) playerState.discardsLeft--;
 
-        if (this.isGameOver(playerState, gameState)) gameState.gameStatus = "finished";
+        if (this.isBlindOver(playerState, gameState)) gameState.gameStatus = "finished";
         const returnMsg = this.buildSelectCardsResult(RESULT_CODE.SUCCESS, selectedCards, gameState);
 
         // this.logger.log(
         //     `-${playerId}- user hand cards: ${JSON.stringify(playerState.hand)}, remaining cards: ${JSON.stringify(playerState.deck)}`,
         // );
-        returnMsg.gameOver = gameState.gameStatus === "finished";
+        returnMsg.blindOver = gameState.gameStatus === "finished";
+        returnMsg.gameOver = false;
         returnMsg.remainingDeckCount = playerState.deck.length;
         returnMsg.cardType = cardType;
         returnMsg.validCards = validCards;
         returnMsg.baseScore = baseScore;
         returnMsg.multiplier = multiplier;
-        if (returnMsg.gameOver) {
+        returnMsg.round = blindState.round;
+        returnMsg.ante = blindState.ante;
+        returnMsg.blindType = blindState.blindType;
+        if (returnMsg.blindOver) {
+            const result = blindState.currentBlindScore >= blindState.targetScore ? "WIN" : "LOSE";
             returnMsg.settlement = {
                 finalScore: blindState.currentBlindScore,
                 targetScore: blindState.targetScore,
-                result: blindState.currentBlindScore >= blindState.targetScore ? "WIN" : "LOSE",
+                result: result,
             };
+            if (result === "LOSE") {
+                returnMsg.gameOver = true;
+                // Reset the game state for the player, allowing them to start a new game immediately after losing.
+                delete this.gameStates[playerId];
+            }
         }
         return returnMsg;
     }
@@ -201,15 +223,23 @@ export class GameService {
         return newHand;
     }
 
-    private initGameState(playerId: string, gameState: GameState, playerState: PlayerState): GameState {
+    private initGameState(playerId: string, gameState: GameState): GameState {
         const deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
         let round = 1;
-        let playsLeft: number = GAME_RULE.INITIAL_PLAYS_LEFT;
-        let discardsLeft: number = GAME_RULE.INITIAL_DISCARDS_LEFT;
+        const playsLeft: number = GAME_RULE.INITIAL_PLAYS_LEFT;
+        const discardsLeft: number = GAME_RULE.INITIAL_DISCARDS_LEFT;
+        let blindTypeIndex = (round - 1) % 3;
+        let { ante, blindType, targetScore } = this.getBlindConfig(round);
         if (gameState) {
             round = gameState.blindState.round + 1;
-            playsLeft = playerState.playsLeft ?? GAME_RULE.INITIAL_PLAYS_LEFT;
-            discardsLeft = playerState.discardsLeft ?? GAME_RULE.INITIAL_DISCARDS_LEFT;
+            ante = Math.floor((round - 1) / 3) + 1;
+            blindTypeIndex = (round - 1) % 3;
+            const blindConfig = BLIND_SCORE_CONFIG[ante];
+            if (!blindConfig) {
+                throw new Error(`Blind config not found for ante: ${ante}`);
+            }
+            blindType = blindConfig[blindTypeIndex].type;
+            targetScore = blindConfig[blindTypeIndex].score;
         }
         this.gameStates[playerId] = {
             playerId: playerId,
@@ -223,9 +253,9 @@ export class GameService {
             },
             blindState: {
                 round: round,
-                ante: Math.floor((round - 1) / 3) + 1,
-                blindType: "small",
-                targetScore: GAME_RULE.INITIAL_TARGET_SCORE,
+                ante: ante,
+                blindType: blindType,
+                targetScore: targetScore,
                 currentBlindScore: 0,
             },
             gameStatus: "playing",
@@ -234,7 +264,23 @@ export class GameService {
         return this.gameStates[playerId];
     }
 
-    private isGameOver(playerState: PlayerState, gameState: GameState): boolean {
+    private isBlindOver(playerState: PlayerState, gameState: GameState): boolean {
         return playerState.playsLeft <= 0 || gameState.blindState.currentBlindScore >= gameState.blindState.targetScore;
+    }
+
+    private getBlindConfig(round: number) {
+        const ante = Math.floor((round - 1) / 3) + 1;
+        const blindTypeIndex = (round - 1) % 3;
+        const blindConfig = BLIND_SCORE_CONFIG[ante];
+
+        if (!blindConfig?.[blindTypeIndex]) {
+            throw new Error(`Blind config not found for round: ${round}, ante: ${ante}`);
+        }
+
+        return {
+            ante,
+            blindType: blindConfig[blindTypeIndex].type,
+            targetScore: blindConfig[blindTypeIndex].score,
+        };
     }
 }

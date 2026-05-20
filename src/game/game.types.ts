@@ -1,5 +1,6 @@
 import { Card } from "../poker/poker.types";
 import { BlindType } from "./blind.config";
+export type GameStatus = "playing" | "finished";
 
 export type GameState = {
     playerId: string;
@@ -7,7 +8,7 @@ export type GameState = {
     playerState: PlayerState;
     blindState: BlindState;
 
-    gameStatus: "playing" | "finished";
+    gameStatus: GameStatus;
 };
 
 export type PlayerState = {
@@ -42,7 +43,7 @@ export type GameStateResponse = {
     currentBlindScore: number;
     currentActionScore: number;
 
-    gameStatus: "playing" | "finished";
+    gameStatus: GameStatus;
 
     targetScore: number;
 };
@@ -51,23 +52,31 @@ export type SelectCardsResult = {
     code: number;
     selectedCards: string[];
     gameOver?: boolean;
+    blindOver?: boolean;
     remainingDeckCount?: number;
     playerState?: GameStateResponse;
     cardType?: number;
     validCards?: string[];
     baseScore?: number;
     multiplier?: number;
+    round?: number;
+    ante?: number;
+    blindType?: BlindType;
     settlement?: {
         finalScore: number;
         targetScore: number;
-        result: string;
+        result: "WIN" | "LOSE";
     };
 };
 
 export type DealResult = {
     code: number;
-    hand?: string[];
-    remainingDeckCount?: number;
-    playsLeft?: number;
-    discardsLeft?: number;
+    hand: string[];
+    remainingDeckCount: number;
+    playsLeft: number;
+    discardsLeft: number;
+    round: number;
+    ante: number;
+    blindType: BlindType;
+    targetScore: number;
 };
