@@ -2,9 +2,21 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
-import { BLIND_SCORE_CONFIG } from "./blind.config";
+import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "../poker/boss.config";
 
-import { GameState, PlayerState, BlindState, GameStateResponse, SelectCardsResult, DealResult } from "./game.types";
+import { BLIND_SCORE_CONFIG } from "./blind.config";
+import {
+    GameState,
+    PlayerState,
+    BlindState,
+    GameStateResponse,
+    SelectCardsResult,
+    DealResult,
+    AnteConfig,
+    Progress,
+    NextBlindConfig,
+} from "./game.types";
+
 import {
     RESULT_CODE,
     PLAYER_STATE_CODE,
@@ -29,7 +41,18 @@ export class GameService {
      */
     private readonly gameStates: Record<string, GameState> = {};
 
+    private readonly bossBlindAssignments: Record<string, BossBlindCode[]> = {};
+
     constructor(private readonly pokerService: PokerService) {}
+
+    initGame(playerId: string): GameState {
+        if (this.gameStates[playerId]) delete this.gameStates[playerId];
+        if (this.bossBlindAssignments[playerId]) delete this.bossBlindAssignments[playerId];
+
+        const gameState: GameState = this.createInitialGameState(playerId);
+        this.gameStates[playerId] = gameState;
+        return gameState;
+    }
 
     // Start a new single-player game by initializing state, shuffling deck, and dealing the initial hand.
     startGame(playerId: string): DealResult {
@@ -223,44 +246,29 @@ export class GameService {
         return newHand;
     }
 
-    private initGameState(playerId: string, gameState: GameState): GameState {
-        const deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
-        let round = 1;
-        const playsLeft: number = GAME_RULE.INITIAL_PLAYS_LEFT;
-        const discardsLeft: number = GAME_RULE.INITIAL_DISCARDS_LEFT;
-        let blindTypeIndex = (round - 1) % 3;
-        let { ante, blindType, targetScore } = this.getBlindConfig(round);
-        if (gameState) {
-            round = gameState.blindState.round + 1;
-            ante = Math.floor((round - 1) / 3) + 1;
-            blindTypeIndex = (round - 1) % 3;
-            const blindConfig = BLIND_SCORE_CONFIG[ante];
-            if (!blindConfig) {
-                throw new Error(`Blind config not found for ante: ${ante}`);
-            }
-            blindType = blindConfig[blindTypeIndex].type;
-            targetScore = blindConfig[blindTypeIndex].score;
-        }
+    private createInitialGameState(playerId: string): GameState {
+        const currentAnteConfig = this.getAnteConfig(playerId, 1);
         this.gameStates[playerId] = {
             playerId: playerId,
             playerState: {
-                deck: deck,
+                deck: [],
                 hand: [],
-                playsLeft,
-                discardsLeft,
+                playsLeft: GAME_RULE.INITIAL_PLAYS_LEFT,
+                discardsLeft: GAME_RULE.INITIAL_DISCARDS_LEFT,
                 handSize: GAME_RULE.DEFAULT_HAND_SIZE,
                 currentActionScore: 0,
             },
             blindState: {
-                round: round,
-                ante: ante,
-                blindType: blindType,
-                targetScore: targetScore,
+                round: 1,
+                ante: 1,
+                blindType: "small",
+                targetScore: currentAnteConfig.small.score,
+                currentAnteConfig: currentAnteConfig,
                 currentBlindScore: 0,
             },
-            gameStatus: "playing",
+            gameStatus: "initialized",
         };
-        // Logger.log(`-${playerId}- initPlayerState: ${JSON.stringify(this.gameStates[playerId])}`);
+
         return this.gameStates[playerId];
     }
 
@@ -282,5 +290,32 @@ export class GameService {
             blindType: blindConfig[blindTypeIndex].type,
             targetScore: blindConfig[blindTypeIndex].score,
         };
+    private advanceToNextBlind(
+        gameState: GameState,
+        nextProgress: {
+            nextBlindConfig: NextBlindConfig;
+            nextAnteConfig?: AnteConfig;
+        },
+    ): void {
+        const nextBlindConfig = nextProgress.nextBlindConfig;
+
+        gameState.blindState.round += 1;
+        gameState.blindState.ante = nextBlindConfig.ante;
+        gameState.blindState.blindType = nextBlindConfig.blindType;
+        gameState.blindState.targetScore = nextBlindConfig.score;
+        gameState.blindState.currentBlindScore = 0;
+
+        if (nextProgress.nextAnteConfig) {
+            gameState.blindState.currentAnteConfig = nextProgress.nextAnteConfig;
+        }
+    }
+
+    private shuffleBossConfig<T>(arr: T[]): T[] {
+        const out = [...arr];
+        for (let i = out.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [out[i], out[j]] = [out[j], out[i]];
+        }
+        return out;
     }
 }

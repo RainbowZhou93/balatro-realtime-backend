@@ -1,6 +1,6 @@
 import { Card } from "../poker/poker.types";
 import { BlindType } from "./blind.config";
-export type GameStatus = "playing" | "finished";
+export type GameStatus = "initialized" | "playing" | "finished";
 
 export type GameState = {
     playerId: string;
@@ -69,6 +69,14 @@ export type SelectCardsResult = {
         finalScore: number;
         targetScore: number;
         result: "WIN" | "LOSE";
+    };
+export type NextBlindConfig = {
+    ante: number;
+    blindType: BlindType;
+    score: number;
+    boss?: {
+        code: number;
+        name: string;
     };
 };
 

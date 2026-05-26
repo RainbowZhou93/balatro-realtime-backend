@@ -47,11 +47,27 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    @SubscribeMessage("initGame")
+    handleInitGame(@MessageBody() data: object, @ConnectedSocket() client: GatewayClient): object {
+        const playerId = client.__clientId;
+        if (!playerId)
+            return {
+                event: "error",
+                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in initGame" },
+            };
+
+        const gameInfo = this.gameService.initGame(playerId);
+        return { event: "initGame", data: gameInfo };
+    }
+
     @SubscribeMessage("startGame")
     handleStartGame(@MessageBody() data: object, @ConnectedSocket() client: GatewayClient): object {
         const playerId = client.__clientId;
         if (!playerId)
-            return { event: "error", data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required" } };
+            return {
+                event: "error",
+                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in startGame" },
+            };
 
         const dealResult = this.gameService.startGame(playerId);
         return { event: "startGame", data: dealResult };
@@ -64,7 +80,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ): object {
         const playerId = client.__clientId;
         if (!playerId)
-            return { event: "error", data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required" } };
+            return {
+                event: "error",
+                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in selectCards" },
+            };
 
         const selectCardsResult = this.gameService.selectCards(data.selectedCards, data.action, playerId);
         return { event: "selectCardsResult", data: selectCardsResult };
