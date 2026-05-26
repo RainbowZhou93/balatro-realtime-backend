@@ -25,6 +25,7 @@ import {
     SELECT_CARD_ACTION,
     GAME_RULE,
     GAME_STATE_CODE,
+    CODE_DESCRIPTION,
 } from "./game.constants";
 
 @Injectable()
@@ -56,47 +57,62 @@ export class GameService {
 
     // Start a new single-player game by initializing state, shuffling deck, and dealing the initial hand.
     startGame(playerId: string): DealResult {
-        let gameState: GameState;
-        let playerState: PlayerState;
-        gameState = this.gameStates[playerId];
+        const gameState: GameState = this.gameStates[playerId];
+        const playerState: PlayerState = this.gameStates[playerId]?.playerState;
+        const blindState: BlindState = this.gameStates[playerId]?.blindState;
 
-        playerState = this.gameStates[playerId]?.playerState;
-        const handSize: number = playerState?.handSize ?? GAME_RULE.DEFAULT_HAND_SIZE;
-        if (gameState?.gameStatus == "playing") {
+        if (!gameState || !playerState || !blindState) {
             return {
-                code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
-                hand: playerState.hand,
-                remainingDeckCount: playerState.deck.length,
-                playsLeft: playerState.playsLeft,
-                discardsLeft: playerState.discardsLeft,
-                round: gameState.blindState.round,
-                ante: gameState.blindState.ante,
-                blindType: gameState.blindState.blindType,
-                targetScore: gameState.blindState.targetScore,
+                code: GAME_STATE_CODE.GAME_NOT_FOUND,
             };
         }
-        gameState = this.initGameState(playerId, gameState);
-        playerState = gameState.playerState;
 
-        const deck = playerState.deck;
-        const hand = this.pokerService.serializeCards(deck.splice(0, handSize));
+        const handSize: number = playerState.handSize;
+        if (gameState.gameStatus == "playing") {
+            return {
+                code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
+                playerState: {
+                    hand: playerState.hand,
+                    remainingDeckCount: playerState.deck.length,
+                    playsLeft: playerState.playsLeft,
+                    discardsLeft: playerState.discardsLeft,
+                },
+                blindState: {
+                    round: blindState.round,
+                    ante: blindState.ante,
+                    blindType: blindState.blindType,
+                    targetScore: blindState.targetScore,
+                    currentAnteConfig: blindState.currentAnteConfig,
+                },
+            };
+        }
+
+        playerState.deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
+
+        const hand = this.pokerService.serializeCards(playerState.deck.splice(0, handSize));
         hand.sort((a, b) => {
             return this.pokerService.getCardRank(b) - this.pokerService.getCardRank(a);
         });
-
         playerState.hand = hand;
+        gameState.gameStatus = "playing";
 
         const dealResult = {
             code: RESULT_CODE.SUCCESS,
-            hand,
-            remainingDeckCount: playerState.deck.length,
-            playsLeft: playerState.playsLeft,
-            discardsLeft: playerState.discardsLeft,
-            round: gameState.blindState.round,
-            ante: gameState.blindState.ante,
-            blindType: gameState.blindState.blindType,
-            targetScore: gameState.blindState.targetScore,
+            playerState: {
+                hand: playerState.hand,
+                remainingDeckCount: playerState.deck.length,
+                playsLeft: GAME_RULE.INITIAL_PLAYS_LEFT,
+                discardsLeft: GAME_RULE.INITIAL_DISCARDS_LEFT,
+            },
+            blindState: {
+                round: blindState.round,
+                ante: blindState.ante,
+                blindType: blindState.blindType,
+                targetScore: blindState.targetScore,
+                currentAnteConfig: blindState.currentAnteConfig,
+            },
         };
+
         // this.logger.log(`-${playerId}- startGame playerState: ${JSON.stringify(gameState)}`);
         return dealResult;
     }
@@ -111,48 +127,48 @@ export class GameService {
         let multiplier: number = 0;
         let validCards: string[] = [];
         if (!playerId || !gameState) {
-            return { code: PLAYER_STATE_CODE.NOT_FOUND, selectedCards };
+            return this.buildSelectCardsResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action: action });
         }
 
         if (gameState.gameStatus !== "playing") {
-            return this.buildSelectCardsResult(GAME_STATE_CODE.GAME_ALREADY_FINISHED, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: GAME_STATE_CODE.GAME_NOT_STARTED, action: action });
         }
 
         const handCards: string[] = playerState.hand;
 
         if (!selectedCards?.length) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, action: action });
         }
 
         if (selectedCards?.length > GAME_RULE.MAX_SELECT_CARDS) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, action: action });
         }
 
         const validCard = selectedCards.every((card) => CARD_PATTERN.test(card));
         if (!validCard) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, action: action });
         }
 
         const selectedSet = new Set(selectedCards);
         if (selectedSet.size !== selectedCards.length) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, action: action });
         }
 
         const existCards = selectedCards.every((item) => handCards.includes(item));
         if (!existCards) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, action: action });
         }
 
         if (action !== SELECT_CARD_ACTION.PLAY && action !== SELECT_CARD_ACTION.DISCARD) {
-            return this.buildSelectCardsResult(REQUEST_PARAM_CODE.INVALID_ACTION, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, action: action });
         }
 
         if (action == SELECT_CARD_ACTION.PLAY && playerState.playsLeft <= 0) {
-            return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_PLAYS_LEFT, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: GAME_FLOW_CODE.NO_PLAYS_LEFT, action: action });
         }
 
         if (action == SELECT_CARD_ACTION.DISCARD && playerState.discardsLeft <= 0) {
-            return this.buildSelectCardsResult(GAME_FLOW_CODE.NO_DISCARDS_LEFT, selectedCards, gameState);
+            return this.buildSelectCardsResult({ code: GAME_FLOW_CODE.NO_DISCARDS_LEFT, action: action });
         }
 
         if (action == SELECT_CARD_ACTION.PLAY) {
@@ -173,54 +189,130 @@ export class GameService {
         if (action == SELECT_CARD_ACTION.PLAY) playerState.playsLeft--;
         if (action == SELECT_CARD_ACTION.DISCARD) playerState.discardsLeft--;
 
-        if (this.isBlindOver(playerState, gameState)) gameState.gameStatus = "finished";
-        const returnMsg = this.buildSelectCardsResult(RESULT_CODE.SUCCESS, selectedCards, gameState);
+        const selectCardsResult = this.buildSelectCardsResult({
+            code: RESULT_CODE.SUCCESS,
+            action,
+            selectedCards,
+            gameState,
+            cardType,
+            validCards,
+            baseScore,
+            multiplier,
+        });
 
         // this.logger.log(
         //     `-${playerId}- user hand cards: ${JSON.stringify(playerState.hand)}, remaining cards: ${JSON.stringify(playerState.deck)}`,
         // );
-        returnMsg.blindOver = gameState.gameStatus === "finished";
-        returnMsg.gameOver = false;
-        returnMsg.remainingDeckCount = playerState.deck.length;
-        returnMsg.cardType = cardType;
-        returnMsg.validCards = validCards;
-        returnMsg.baseScore = baseScore;
-        returnMsg.multiplier = multiplier;
-        returnMsg.round = blindState.round;
-        returnMsg.ante = blindState.ante;
-        returnMsg.blindType = blindState.blindType;
-        if (returnMsg.blindOver) {
-            const result = blindState.currentBlindScore >= blindState.targetScore ? "WIN" : "LOSE";
-            returnMsg.settlement = {
-                finalScore: blindState.currentBlindScore,
-                targetScore: blindState.targetScore,
-                result: result,
-            };
-            if (result === "LOSE") {
-                returnMsg.gameOver = true;
-                // Reset the game state for the player, allowing them to start a new game immediately after losing.
-                delete this.gameStates[playerId];
-            }
-        }
-        return returnMsg;
+
+        return selectCardsResult;
     }
 
-    private buildSelectCardsResult(code: number, selectedCards: string[], gameState: GameState): SelectCardsResult {
-        const playerState: PlayerState = gameState.playerState;
-        const playerStateResponse: GameStateResponse = {
-            hand: playerState.hand,
-            playsLeft: playerState.playsLeft,
-            discardsLeft: playerState.discardsLeft,
-            remainingDeckCount: playerState.deck.length,
-            currentBlindScore: gameState.blindState.currentBlindScore,
-            currentActionScore: playerState.currentActionScore,
-            gameStatus: gameState.gameStatus,
-            targetScore: gameState.blindState.targetScore,
+    private buildSelectCardsResult(param: {
+        code: number;
+        action: string;
+        selectedCards?: string[];
+        gameState?: GameState;
+        cardType?: number;
+        validCards?: string[];
+        baseScore?: number;
+        multiplier?: number;
+    }): SelectCardsResult {
+        const { code, action, selectedCards, gameState, cardType, validCards, baseScore, multiplier } = param;
+        this.logger.log(`buildSelectCardsResult : ${JSON.stringify(param)}`);
+
+        if (code != RESULT_CODE.SUCCESS) {
+            return { code, message: CODE_DESCRIPTION[code], action };
+        }
+
+        if (
+            !gameState ||
+            selectedCards === undefined ||
+            cardType === undefined ||
+            validCards === undefined ||
+            baseScore === undefined ||
+            multiplier === undefined
+        ) {
+            return {
+                code: REQUEST_PARAM_CODE.PARAM_ERROR,
+                message: CODE_DESCRIPTION[REQUEST_PARAM_CODE.PARAM_ERROR],
+                action: action,
+            };
+        }
+
+        const playerStates: PlayerState = gameState.playerState;
+        const blindStates: BlindState = gameState.blindState;
+
+        const blindOver = this.isBlindOver(playerStates, gameState);
+        if (blindOver) gameState.gameStatus = "finished";
+
+        const ante = blindStates.currentAnteConfig.ante;
+
+        const actions = {
+            selectedCards,
+            cardType,
+            validCards,
+            baseScore,
+            multiplier,
         };
+
+        const playerState: GameStateResponse = {
+            hand: playerStates.hand,
+            playsLeft: playerStates.playsLeft,
+            discardsLeft: playerStates.discardsLeft,
+            remainingDeckCount: playerStates.deck.length,
+            currentBlindScore: blindStates.currentBlindScore,
+            currentActionScore: playerStates.currentActionScore,
+            gameStatus: gameState.gameStatus,
+            targetScore: blindStates.targetScore,
+        };
+
+        const blindState = {
+            round: blindStates.round,
+            ante: ante,
+            blindType: blindStates.blindType,
+            targetScore: blindStates.targetScore,
+            currentBlindScore: blindStates.currentBlindScore,
+        };
+
+        const progress: Progress = {
+            gameOver: false,
+            blindOver: blindOver,
+            currentAnteConfig: blindStates.currentAnteConfig,
+        };
+
+        if (blindOver) {
+            const result = blindStates.currentBlindScore >= blindStates.targetScore ? "WIN" : "LOSE";
+
+            progress.settlement = {
+                finalScore: blindStates.currentBlindScore,
+                targetScore: blindStates.targetScore,
+                result: result,
+            };
+
+            if (result === "LOSE") {
+                progress.gameOver = true;
+                delete this.gameStates[gameState.playerId];
+            } else {
+                const nextProgress = this.getNextBlindProgress(gameState);
+
+                progress.nextBlindConfig = nextProgress.nextBlindConfig;
+
+                if (nextProgress.nextAnteConfig) {
+                    progress.nextAnteConfig = nextProgress.nextAnteConfig;
+                }
+
+                this.advanceToNextBlind(gameState, nextProgress);
+            }
+        }
+
         return {
             code,
-            selectedCards,
-            playerState: playerStateResponse,
+            message: CODE_DESCRIPTION[code],
+            action: action,
+            playerState,
+            blindState,
+            progress,
+            actions,
         };
     }
 
@@ -272,24 +364,87 @@ export class GameService {
         return this.gameStates[playerId];
     }
 
+    private getNextBlindProgress(gameState: GameState): {
+        nextBlindConfig: NextBlindConfig;
+        nextAnteConfig?: AnteConfig;
+    } {
+        const blindState = gameState.blindState;
+        const currentAnteConfig = blindState.currentAnteConfig;
+
+        if (blindState.blindType === "small") {
+            return {
+                nextBlindConfig: {
+                    ante: blindState.ante,
+                    blindType: "big",
+                    score: currentAnteConfig.big.score,
+                },
+            };
+        }
+
+        if (blindState.blindType === "big") {
+            return {
+                nextBlindConfig: {
+                    ante: blindState.ante,
+                    blindType: "boss",
+                    score: currentAnteConfig.boss.score,
+                    boss: {
+                        code: currentAnteConfig.boss.code,
+                        name: currentAnteConfig.boss.name,
+                    },
+                },
+            };
+        }
+
+        const nextAnte = Math.floor(blindState.round / 3) + 1;
+        const nextAnteConfig = this.getAnteConfig(gameState.playerId, nextAnte);
+
+        return {
+            nextBlindConfig: {
+                ante: nextAnte,
+                blindType: "small",
+                score: nextAnteConfig.small.score,
+            },
+            nextAnteConfig,
+        };
+    }
+
     private isBlindOver(playerState: PlayerState, gameState: GameState): boolean {
         return playerState.playsLeft <= 0 || gameState.blindState.currentBlindScore >= gameState.blindState.targetScore;
     }
 
-    private getBlindConfig(round: number) {
-        const ante = Math.floor((round - 1) / 3) + 1;
-        const blindTypeIndex = (round - 1) % 3;
-        const blindConfig = BLIND_SCORE_CONFIG[ante];
+    private getAnteConfig(playerId: string, ante: number): AnteConfig {
+        let bossBlindAssignmentsByPlayer = this.bossBlindAssignments[playerId];
+        if (!bossBlindAssignmentsByPlayer) {
+            const bossBlindCodeList: BossBlindCode[] = Object.values(BOSS_BLIND_CODE);
+            bossBlindAssignmentsByPlayer = this.shuffleBossConfig(bossBlindCodeList);
 
-        if (!blindConfig?.[blindTypeIndex]) {
-            throw new Error(`Blind config not found for round: ${round}, ante: ${ante}`);
+            this.bossBlindAssignments[playerId] = bossBlindAssignmentsByPlayer;
+        }
+        // this.logger.log(`Player ${playerId}, bossBlindAssignments: ${JSON.stringify(this.bossBlindAssignments[playerId])}`);
+
+        const code = bossBlindAssignmentsByPlayer.pop();
+        if (!code) {
+            throw new Error(`No more boss blind code available for player: ${playerId}`);
         }
 
-        return {
-            ante,
-            blindType: blindConfig[blindTypeIndex].type,
-            targetScore: blindConfig[blindTypeIndex].score,
+        const blindConfig = BLIND_SCORE_CONFIG[ante];
+        if (!blindConfig) {
+            throw new Error(`Blind config not found for ante: ${ante}`);
+        }
+
+        const currentAnteConfig = {
+            ante: ante,
+            small: { score: BLIND_SCORE_CONFIG[ante][0].score },
+            big: { score: BLIND_SCORE_CONFIG[ante][1].score },
+            boss: {
+                score: BLIND_SCORE_CONFIG[ante][2].score,
+                code: code,
+                name: BOSS_BLIND_CONFIG[code].name,
+            },
         };
+        return currentAnteConfig;
+    }
+
     private advanceToNextBlind(
         gameState: GameState,
         nextProgress: {

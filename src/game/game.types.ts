@@ -53,23 +53,46 @@ export type GameStateResponse = {
 
 export type SelectCardsResult = {
     code: number;
-    selectedCards: string[];
-    gameOver?: boolean;
-    blindOver?: boolean;
-    remainingDeckCount?: number;
+    message: string;
+
+    action: string;
+
+    actions?: {
+        selectedCards: string[];
+        cardType: number;
+        validCards: string[];
+        baseScore: number;
+        multiplier: number;
+    };
+
     playerState?: GameStateResponse;
-    cardType?: number;
-    validCards?: string[];
-    baseScore?: number;
-    multiplier?: number;
-    round?: number;
-    ante?: number;
-    blindType?: BlindType;
+
+    blindState?: {
+        round: number;
+        ante: number;
+        blindType: BlindType;
+        targetScore: number;
+        currentBlindScore: number;
+    };
+
+    progress?: Progress;
+};
+
+export type Progress = {
+    gameOver: boolean;
+    blindOver: boolean;
     settlement?: {
         finalScore: number;
         targetScore: number;
         result: "WIN" | "LOSE";
     };
+
+    currentAnteConfig: AnteConfig;
+    nextAnteConfig?: AnteConfig;
+
+    nextBlindConfig?: NextBlindConfig;
+};
+
 export type NextBlindConfig = {
     ante: number;
     blindType: BlindType;
@@ -82,11 +105,23 @@ export type NextBlindConfig = {
 
 export type DealResult = {
     code: number;
-    hand: string[];
-    remainingDeckCount: number;
-    playsLeft: number;
-    discardsLeft: number;
-    round: number;
+
+    playerState?: {
+        hand: string[];
+        remainingDeckCount: number;
+        playsLeft: number;
+        discardsLeft: number;
+    };
+
+    blindState?: {
+        round: number;
+        ante: number;
+        blindType: BlindType;
+        targetScore: number;
+        currentAnteConfig: AnteConfig;
+    };
+};
+
 export type AnteConfig = {
     ante: number;
     small: {
