@@ -30,6 +30,9 @@ export type BlindState = {
 
     targetScore: number; // The score that the player needs to reach to win, default is 300, can be customized for different difficulty levels.
     currentBlindScore: number;
+
+    currentAnteConfig: AnteConfig;
+    nextAnteConfig?: AnteConfig;
 };
 
 export type GameStateResponse = {
@@ -76,7 +79,17 @@ export type DealResult = {
     playsLeft: number;
     discardsLeft: number;
     round: number;
+export type AnteConfig = {
     ante: number;
-    blindType: BlindType;
-    targetScore: number;
+    small: {
+        score: number;
+    };
+    big: {
+        score: number;
+    };
+    boss: {
+        score: number;
+        code: number;
+        name: string;
+    };
 };
