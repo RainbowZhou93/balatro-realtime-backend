@@ -55,17 +55,15 @@ export type SelectCardsResult = {
     code: number;
     message: string;
 
-    action: string;
+    action?: "play" | "discard";
 
-    actions?: {
+    scoreDetail?: {
         selectedCards: string[];
         cardType: number;
         validCards: string[];
         baseScore: number;
         multiplier: number;
     };
-
-    playerState?: GameStateResponse;
 
     blindState?: {
         round: number;
@@ -75,9 +73,20 @@ export type SelectCardsResult = {
         currentBlindScore: number;
     };
 
+    playerState?: GameStateResponse;
+
     progress?: Progress;
 };
 
+/**
+ * Represents progression-related game information.
+ *
+ * Includes:
+ * - blind completion
+ * - settlement result
+ * - next blind preview
+ * - next ante preview
+ */
 export type Progress = {
     gameOver: boolean;
     blindOver: boolean;
@@ -90,6 +99,8 @@ export type Progress = {
     currentAnteConfig: AnteConfig;
     nextAnteConfig?: AnteConfig;
 
+    // Preview data for the upcoming Blind.
+    // Used by the frontend for stage transition display.
     nextBlindConfig?: NextBlindConfig;
 };
 
@@ -105,6 +116,7 @@ export type NextBlindConfig = {
 
 export type DealResult = {
     code: number;
+    message: string;
 
     playerState?: {
         hand: string[];

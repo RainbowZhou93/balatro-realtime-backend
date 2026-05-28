@@ -1,3 +1,5 @@
+import { HandType } from "./poker.types";
+
 export const BOSS_BLIND_CODE = {
     THE_CLUB: 101,
     THE_DIAMOND: 102,
@@ -83,3 +85,7 @@ export const BOSS_BLIND_CONFIG = {
 };
 
 export type BossBlindCode = (typeof BOSS_BLIND_CODE)[keyof typeof BOSS_BLIND_CODE];
+
+export type BossEffect =
+    | { type: "disableSuit"; suit: "H" | "D" | "C" | "S" }
+    | { type: "disableHandType"; handType: HandType };

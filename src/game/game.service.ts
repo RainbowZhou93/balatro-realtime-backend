@@ -32,30 +32,50 @@ import {
 export class GameService {
     private readonly logger = new Logger(GameService.name);
     /**
-     * Stores each player's remaining deck during the current game.
-     * Key: playerId
-     * Value: remaining cards in the player's deck
+     * Stores the current runtime game state for each player.
      *
-     * Note:
-     * This is an in-memory state for the current phase.
-     * It may be moved to Redis or database storage in later stages.
+     * This acts as the temporary in-memory state container.
+     * Future versions may migrate this to Redis or database persistence.
      */
     private readonly gameStates: Record<string, GameState> = {};
 
+    /**
+     * Stores the generated Boss Blind sequence for each player.
+     *
+     * Each ante consumes one Boss Blind config.
+     * The sequence is generated once during initialization.
+     */
     private readonly bossBlindAssignments: Record<string, BossBlindCode[]> = {};
 
     constructor(private readonly pokerService: PokerService) {}
 
+    /**
+     * Initializes the full game lifecycle.
+     *
+     * This method is responsible for:
+     * - creating initial game state
+     * - initializing blind progression
+     * - generating ante configuration
+     *
+     * It does not deal cards.
+     * Actual gameplay starts in startGame().
+     */
     initGame(playerId: string): GameState {
         if (this.gameStates[playerId]) delete this.gameStates[playerId];
         if (this.bossBlindAssignments[playerId]) delete this.bossBlindAssignments[playerId];
+        // this.logger.log(`Initializing game for player: ${playerId}`);
 
         const gameState: GameState = this.createInitialGameState(playerId);
         this.gameStates[playerId] = gameState;
         return gameState;
     }
 
-    // Start a new single-player game by initializing state, shuffling deck, and dealing the initial hand.
+    /**
+     * Starts the current Blind and deals cards to the player.
+     *
+     * This method assumes the game has already been initialized.
+     * It only prepares the current playable round.
+     */
     startGame(playerId: string): DealResult {
         const gameState: GameState = this.gameStates[playerId];
         const playerState: PlayerState = this.gameStates[playerId]?.playerState;
@@ -64,6 +84,7 @@ export class GameService {
         if (!gameState || !playerState || !blindState) {
             return {
                 code: GAME_STATE_CODE.GAME_NOT_FOUND,
+                message: CODE_DESCRIPTION[GAME_STATE_CODE.GAME_NOT_FOUND],
             };
         }
 
@@ -71,6 +92,8 @@ export class GameService {
         if (gameState.gameStatus == "playing") {
             return {
                 code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
+                message: CODE_DESCRIPTION[GAME_STATE_CODE.GAME_ALREADY_STARTED],
+
                 playerState: {
                     hand: playerState.hand,
                     remainingDeckCount: playerState.deck.length,
@@ -87,6 +110,11 @@ export class GameService {
             };
         }
 
+        playerState.playsLeft = GAME_RULE.INITIAL_PLAYS_LEFT;
+        playerState.discardsLeft = GAME_RULE.INITIAL_DISCARDS_LEFT;
+        playerState.currentActionScore = 0;
+        blindState.currentBlindScore = 0;
+
         playerState.deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
 
         const hand = this.pokerService.serializeCards(playerState.deck.splice(0, handSize));
@@ -98,6 +126,7 @@ export class GameService {
 
         const dealResult = {
             code: RESULT_CODE.SUCCESS,
+            message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
             playerState: {
                 hand: playerState.hand,
                 remainingDeckCount: playerState.deck.length,
@@ -117,7 +146,16 @@ export class GameService {
         return dealResult;
     }
 
-    //统一处理出牌和弃牌：两者都会移除所选手牌并自动补牌，区别是扣减不同的操作次数。
+    /**
+     * Handles the player's card selection action, either "play" or "discard".
+     *
+     * This method performs:
+     * - input validation
+     * - score calculation for "play" action
+     * - hand update (remove selected cards, draw new cards)
+     * - blind progression check
+     * - response construction with updated game state and progression info
+     */
     selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): SelectCardsResult {
         const gameState: GameState = this.gameStates[playerId];
         const playerState: PlayerState = gameState?.playerState;
@@ -126,6 +164,10 @@ export class GameService {
         let baseScore: number = 0;
         let multiplier: number = 0;
         let validCards: string[] = [];
+
+        // this.logger.log(`Player ${playerId} selected cards: ${JSON.stringify(selectedCards)}, action: ${action}`);
+        // this.logger.log(`Current gameState before action: ${JSON.stringify(gameState)}`);
+
         if (!playerId || !gameState) {
             return this.buildSelectCardsResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action: action });
         }
@@ -156,6 +198,9 @@ export class GameService {
 
         const existCards = selectedCards.every((item) => handCards.includes(item));
         if (!existCards) {
+            this.logger.warn(
+                `Player ${playerId} selected cards not in hand. selectedCards: ${JSON.stringify(selectedCards)}, handCards: ${JSON.stringify(handCards)}`,
+            );
             return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, action: action });
         }
 
@@ -172,7 +217,9 @@ export class GameService {
         }
 
         if (action == SELECT_CARD_ACTION.PLAY) {
-            const result = this.pokerService.calculateHandScore(selectedCards);
+            let bossCode: number = -1;
+            if (blindState.blindType == "boss") bossCode = blindState.currentAnteConfig.boss.code;
+            const result = this.pokerService.calculateHandScore(selectedCards, bossCode);
             baseScore = result.baseScore;
             multiplier = result.multiplier;
             cardType = result.handType;
@@ -207,9 +254,20 @@ export class GameService {
         return selectCardsResult;
     }
 
+    /**
+     * Builds the unified selectCards response structure.
+     *
+     * The response is grouped by responsibility:
+     * - action result
+     * - player state
+     * - blind state
+     * - progression state
+     *
+     * This prevents the response structure from becoming a large flat object as gameplay systems expand.
+     */
     private buildSelectCardsResult(param: {
         code: number;
-        action: string;
+        action: "play" | "discard";
         selectedCards?: string[];
         gameState?: GameState;
         cardType?: number;
@@ -218,7 +276,7 @@ export class GameService {
         multiplier?: number;
     }): SelectCardsResult {
         const { code, action, selectedCards, gameState, cardType, validCards, baseScore, multiplier } = param;
-        this.logger.log(`buildSelectCardsResult : ${JSON.stringify(param)}`);
+        // this.logger.log(`buildSelectCardsResult : ${JSON.stringify(param)}`);
 
         if (code != RESULT_CODE.SUCCESS) {
             return { code, message: CODE_DESCRIPTION[code], action };
@@ -247,7 +305,7 @@ export class GameService {
 
         const ante = blindStates.currentAnteConfig.ante;
 
-        const actions = {
+        const scoreDetail = {
             selectedCards,
             cardType,
             validCards,
@@ -292,6 +350,9 @@ export class GameService {
             if (result === "LOSE") {
                 progress.gameOver = true;
                 delete this.gameStates[gameState.playerId];
+                this.logger.log(
+                    `Player ${gameState.playerId} lost the blind. Game over. Final score: ${blindStates.currentBlindScore}, Target score: ${blindStates.targetScore}`,
+                );
             } else {
                 const nextProgress = this.getNextBlindProgress(gameState);
 
@@ -312,7 +373,7 @@ export class GameService {
             playerState,
             blindState,
             progress,
-            actions,
+            scoreDetail,
         };
     }
 
@@ -364,6 +425,14 @@ export class GameService {
         return this.gameStates[playerId];
     }
 
+    /**
+     * Builds the next Blind preview information.
+     *
+     * This method only prepares frontend display data.
+     * It does not update the actual gameState.
+     *
+     * Real Blind progression is handled separately by advanceToNextBlind().
+     */
     private getNextBlindProgress(gameState: GameState): {
         nextBlindConfig: NextBlindConfig;
         nextAnteConfig?: AnteConfig;
@@ -412,6 +481,16 @@ export class GameService {
         return playerState.playsLeft <= 0 || gameState.blindState.currentBlindScore >= gameState.blindState.targetScore;
     }
 
+    /**
+     * Builds the complete ante configuration for frontend display.
+     *
+     * Includes:
+     * - small blind
+     * - big blind
+     * - boss blind
+     *
+     * Boss Blind assignments are consumed per ante.
+     */
     private getAnteConfig(playerId: string, ante: number): AnteConfig {
         let bossBlindAssignmentsByPlayer = this.bossBlindAssignments[playerId];
         if (!bossBlindAssignmentsByPlayer) {
@@ -445,6 +524,18 @@ export class GameService {
         return currentAnteConfig;
     }
 
+    /**
+     * Advances the runtime game state to the next Blind.
+     *
+     * This updates:
+     * - round
+     * - ante
+     * - blind type
+     * - target score
+     * - current ante config
+     *
+     * After progression, the game returns to the "initialized" state and waits for startGame().
+     */
     private advanceToNextBlind(
         gameState: GameState,
         nextProgress: {
