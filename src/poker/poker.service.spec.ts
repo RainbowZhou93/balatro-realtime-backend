@@ -1,5 +1,6 @@
 import { PokerService } from "./poker.service";
 import { CARD_TYPE } from "./poker.constants";
+import { BOSS_BLIND_CODE } from "./boss.config";
 
 describe("PokerService.getCardType", () => {
     let service: PokerService;
@@ -112,5 +113,84 @@ describe("PokerService.getCardType", () => {
 
     it("should throw for invalid rank", () => {
         expect(() => service.getCardType(["ZH"])).toThrow("Invalid card format");
+    });
+});
+
+describe("PokerService.calculateHandScore", () => {
+    let service: PokerService;
+
+    beforeEach(() => {
+        service = new PokerService();
+        console.info(`[PokerService.spec] Case: ${expect.getState().currentTestName}`);
+    });
+
+    it("should score normally when no boss effect is applied", () => {
+        const result = service.calculateHandScore(["AH", "QH", "9H", "6H", "3H"], -1);
+
+        expect(result.handType).toBe(CARD_TYPE.flush);
+        expect(result.baseScore).toBeGreaterThan(0);
+        expect(result.multiplier).toBeGreaterThan(0);
+        expect(result.validCards).toHaveLength(5);
+    });
+
+    it("should return zero score when disableSuit removes all selected cards", () => {
+        const result = service.calculateHandScore(
+            ["AH", "QH", "9H", "6H", "3H"],
+            BOSS_BLIND_CODE.THE_HEART,
+        );
+
+        expect(result.baseScore).toBe(0);
+        expect(result.multiplier).toBe(0);
+        expect(result.handType).toBe(CARD_TYPE.highCard);
+        expect(result.validCards).toEqual([]);
+    });
+
+    it("should ignore only disabled suit cards and score with remaining cards", () => {
+        const result = service.calculateHandScore(
+            ["AC", "AD", "AH", "AS", "2D"],
+            BOSS_BLIND_CODE.THE_CLUB,
+        );
+
+        expect(result.handType).toBe(CARD_TYPE.threeOfAKind);
+        expect(result.baseScore).toBeGreaterThan(0);
+        expect(result.multiplier).toBeGreaterThan(0);
+        expect(result.validCards).toEqual(expect.arrayContaining(["AD", "AH", "AS"]));
+        expect(result.validCards).not.toContain("AC");
+    });
+
+    it("should zero out score when boss disables the current hand type", () => {
+        const result = service.calculateHandScore(
+            ["AH", "QH", "9H", "6H", "3H"],
+            BOSS_BLIND_CODE.THE_FLUSH,
+        );
+
+        expect(result.handType).toBe(CARD_TYPE.flush);
+        expect(result.baseScore).toBe(0);
+        expect(result.multiplier).toBe(0);
+        expect(result.validCards).toEqual([]);
+    });
+
+    it("should still score when boss disables a different hand type", () => {
+        const result = service.calculateHandScore(
+            ["AH", "AD", "7S", "5C", "2D"],
+            BOSS_BLIND_CODE.THE_STRAIGHT,
+        );
+
+        expect(result.handType).toBe(CARD_TYPE.onePair);
+        expect(result.baseScore).toBeGreaterThan(0);
+        expect(result.multiplier).toBeGreaterThan(0);
+        expect(result.validCards).toEqual(expect.arrayContaining(["AH", "AD"]));
+    });
+
+    it("should zero out score when high card is disabled and hand is high card", () => {
+        const result = service.calculateHandScore(
+            ["AH", "KD", "9S", "6C", "2D"],
+            BOSS_BLIND_CODE.THE_HIGH_CARD,
+        );
+
+        expect(result.handType).toBe(CARD_TYPE.highCard);
+        expect(result.baseScore).toBe(0);
+        expect(result.multiplier).toBe(0);
+        expect(result.validCards).toEqual([]);
     });
 });
