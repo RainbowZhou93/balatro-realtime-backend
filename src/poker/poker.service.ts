@@ -13,7 +13,7 @@ import {
     CARD_SCORE,
 } from "./poker.constants";
 
-import { BOSS_BLIND_CONFIG, BossEffect } from "./boss.config";
+import { BOSS_BLIND_CONFIG, BossEffect } from "../game/boss.config";
 @Injectable()
 export class PokerService {
     private readonly baseDeck: ReadonlyArray<Card>;
@@ -115,38 +115,28 @@ export class PokerService {
         handType: number;
         validCards: string[];
     } {
-        const effect: BossEffect | null = BOSS_BLIND_CONFIG[bossCode]?.effect as BossEffect | null;
-        let scoringCards: string[] = cards;
-        scoringCards = this.applyDisableSuitEffect(scoringCards, effect);
-
-        if (scoringCards.length == 0) {
-            return {
-                baseScore: 0,
-                multiplier: 0,
-                handType: CARD_TYPE.highCard,
-                validCards: [],
-            };
-        }
-
-        const handEvaluate: HandEvaluateResult = this.getCardType(scoringCards);
+        const handEvaluate: HandEvaluateResult = this.getCardType(cards);
         const validCardsAfter = handEvaluate.validCards;
         // console.log(`---validCards: ${JSON.stringify(validCards)}------`);
 
+        const effect: BossEffect | null = BOSS_BLIND_CONFIG[bossCode]?.effect as BossEffect | null;
+        let scoringCards: Card[] = validCardsAfter;
+        scoringCards = this.applyDisableSuitEffect(scoringCards, effect);
+
         let baseScore: number = 0;
-        for (let i = 0; i < validCardsAfter.length; i++) {
-            const card = validCardsAfter[i];
+        for (let i = 0; i < scoringCards.length; i++) {
+            const card = scoringCards[i];
             baseScore += CARD_SCORE[card.rank] ?? card.rank;
         }
         // console.log(`befor baseScore: ${baseScore}`);
-
-        const handType: string = TYPE_CARD[handEvaluate.cardType];
+        const cardType: number = handEvaluate.cardType;
+        const handType: string = TYPE_CARD[cardType];
         if (!handType) {
             throw new Error(`Unknown hand type: ${handEvaluate.cardType}`);
         }
 
-        const cardType: number = handEvaluate.cardType;
         let multiplier: number = CARD_MULTIPLIER_MAP[handType];
-        let validCards: string[] = this.serializeCards(validCardsAfter);
+        let validCards: string[] = this.serializeCards(scoringCards);
         baseScore += CARD_SCORE_MAP[handType];
         // console.log(`score: ${baseScore} * ${CARD_MULTIPLIER_MAP[handType]} = ${score}`);
 
@@ -238,10 +228,10 @@ export class PokerService {
         return userCard.filter((card) => ranks.includes(card.rank));
     }
 
-    private applyDisableSuitEffect(cards: string[], effect: BossEffect | null): string[] {
+    private applyDisableSuitEffect(cards: Card[], effect: BossEffect | null): Card[] {
         if (effect?.type !== "disableSuit") return cards;
 
-        return cards.filter((card) => !card.endsWith(effect.suit));
+        return cards.filter((card) => card.suit !== effect.suit);
     }
 
     private isHandTypeDisabled(cardType: number, effect: BossEffect | null): boolean {
