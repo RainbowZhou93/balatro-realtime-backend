@@ -8,6 +8,7 @@ Current focus:
 - Stateful game lifecycle evolution
 - Boss Blind mechanics
 - Realtime game state management
+- Skip Blind and Tag reward system
 
 ---
 
@@ -72,18 +73,21 @@ Current structure (Phase 2):
 - Blind / Ante / Round state management
 - Blind score configuration
 - Basic Blind progression and settlement flow
+- Skip Blind decision flow
+- Tag preview assignment and runtime tag handling
 
 Current state structure:
 
 ```
 - GameState
+  - playerId
 
   - playerState
     - hand
     - deck
     - plays/discards
     - hand size
-    - total score
+    - currentActionScore
 
   - blindState
     - round
@@ -91,6 +95,8 @@ Current state structure:
     - blindType
     - targetScore
     - currentBlindScore
+    - currentAnteConfig
+    - nextAnteConfig?
 
   - gameStatus
 ```
@@ -100,8 +106,8 @@ Future improvements:
 - Redis for state persistence
 - MySQL for long-term storage
 - Distributed session handling
-- Boss Blind special rules
-- Skip Blind reward system
+- Expand Boss Blind and effect coverage
+- Expand Tag types and effect coverage
 - Shop and modifier system
 
 The system is evolving from a single-game lifecycle into a staged game engine with Blind-based progression.
@@ -147,6 +153,9 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 - Stateful runtime management
 - Unit testing with Jest
 - CI automation with GitHub Actions
+- Skip Blind action flow
+- Tag reward preview and assignment
+- Basic Tag effect handling (Boss Tag, Juggle Tag)
 
 ---
 
@@ -179,6 +188,11 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 ✔ Advance to next Blind after clearing current Blind
 ✔ Reset game state after failure
 ✔ Update unit tests for Blind progression
+✔ Add Boss Blind special rules
+✔ Add Skip Blind action handling
+✔ Add Tag reward preview to Blind state
+✔ Implement basic Tag runtime handling
+✔ Support representative Tag effects (Boss Tag, Juggle Tag)
 
 ---
 
@@ -228,6 +242,17 @@ ws://localhost:8088
 }
 ```
 
+### skipBlind
+```json
+{
+  "event":"skipBlind",
+  "data":{
+    "blindType": "small", 
+    "round": 1
+  }
+}
+```
+
 Response includes:
 
 - Updated hand
@@ -273,6 +298,15 @@ Each article corresponds to a specific implementation stage and commit history.
 4. Player Hand Operations and State Flow Design  
    从0到1实现Balatro游戏后端（4）：玩家手牌操作（出牌 / 弃牌 / 补牌）与状态流转设计
 
+5. Scoring Calculation and Single-game Settlement Flow  
+   从0到1实现Balatro游戏后端（5）：得分计算与单局结算流程实现
+
+6. Blind Stage State Design and Lifecycle Progression   
+   从0到1实现Balatro游戏后端（6）：Blind关卡状态设计与回合推进实现
+
+7. Boss Blind Design and Special Rule Handling    
+   从0到1实现Balatro游戏后端（7）：Boss Blind与特殊规则实现
+
 #### Advanced Topics
 
 1. Custom NestJS WebSocket Adapter for Message Interception  
@@ -281,13 +315,12 @@ Each article corresponds to a specific implementation stage and commit history.
 2. CI Automation with GitHub Actions  
    Balatro后端进阶（2）：基于GitHub Actions的CI自动化验证实现
 
+3. Why Mechanism Design Makes Code Harder   
+   Balatro后端进阶（3）：为什么机制设计比写代码更难
+
 ---
 
 ### Upcoming Articles
-
-5. Scoring Calculation and Single-game Settlement Flow
-6. Blind Stage State Design and Round Progression
-7. Boss Blind and Special Rules
 8. Skip Blind Reward System
 9. Multi-stage Lifecycle Management
 
