@@ -14,6 +14,7 @@ export const REQUEST_PARAM_CODE = {
     DUPLICATE_SELECTED_CARDS: 355, // The client submitted the same card multiple times, for example ["AH", "AH"].
     INVALID_ACTION: 356, // The action parameter is invalid, for example: "play", "discardd", or empty.
     PARAM_ERROR: 357,
+    INVALID_BLIND_STATE: 358, // The blind state does not match the expected state for skipping, possibly due to client-server desynchronization or cheating attempts.
 } as const;
 
 export const GAME_FLOW_CODE = {
@@ -53,6 +54,7 @@ export const CODE_DESCRIPTION = {
     [REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS]: "Duplicate cards selected",
     [REQUEST_PARAM_CODE.INVALID_ACTION]: "Invalid action",
     [REQUEST_PARAM_CODE.PARAM_ERROR]: "Request parameter error",
+    [REQUEST_PARAM_CODE.INVALID_BLIND_STATE]: "Invalid blind state for skipping",
 
     [GAME_FLOW_CODE.NO_PLAYS_LEFT]: "No plays left",
     [GAME_FLOW_CODE.NO_DISCARDS_LEFT]: "No discards left",

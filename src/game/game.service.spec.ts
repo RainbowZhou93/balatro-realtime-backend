@@ -8,6 +8,7 @@ import {
     RESULT_CODE,
     GAME_RULE,
 } from "./game.constants";
+import { TAG_CODE } from "./tag.config";
 
 import type { GameState } from "./game.types";
 
@@ -17,6 +18,72 @@ describe("GameService", () => {
 
     beforeAll(() => {
         console.info("[GameService.spec] Running coverage for startGame and selectCards flows.");
+    });
+
+    describe("skipBlind", () => {
+        it("should return NOT_FOUND when player does not exist", () => {
+            const res = service.skipBlind("small", 1, "no-player");
+            expect(res.code).toBe(PLAYER_STATE_CODE.NOT_FOUND);
+        });
+
+        it("should return INVALID_BLIND_STATE when round or blindType mismatch", () => {
+            const playerId = "skip-mismatch-player";
+            service.initGame(playerId);
+
+            const state = getGameState(playerId)!;
+            // current round is 1, try skipping round 2
+            const res = service.skipBlind("small", 2, playerId);
+            expect(res.code).toBe(REQUEST_PARAM_CODE.INVALID_BLIND_STATE);
+        });
+
+        it("should return INVALID_ACTION when blindType is not skippable", () => {
+            const playerId = "skip-invalid-action";
+            service.initGame(playerId);
+            const state = getGameState(playerId)!;
+            // set the server blindType to match the requested blindType so
+            // we reach the invalid-action branch instead of invalid-blind-state.
+            state.blindState.blindType = "boss" as any;
+
+            const res = service.skipBlind("boss" as any, 1, playerId);
+            expect(res.code).toBe(REQUEST_PARAM_CODE.INVALID_ACTION);
+        });
+
+        it("should reroll boss blind when current tag is BOSS_TAG", () => {
+            const playerId = "skip-boss-tag";
+            service.initGame(playerId);
+            const state = getGameState(playerId)!;
+            // ensure small blind uses BOSS_TAG for the test
+            state.blindState.currentAnteConfig.small.tagCode = TAG_CODE.BOSS_TAG;
+            state.blindState.blindType = "small";
+            state.blindState.round = 1;
+
+            const originalBoss = state.blindState.currentAnteConfig.boss.code;
+
+            const res = service.skipBlind("small", 1, playerId);
+
+            expect(res.code).toBe(RESULT_CODE.SUCCESS);
+            expect(res.progress).toBeDefined();
+            expect(res.progress?.currentAnteConfig).toBeDefined();
+            // boss code should have been changed to a different value
+            const newBoss = (getGameState(playerId)!.blindState.currentAnteConfig.boss.code as number);
+            expect(newBoss).not.toBe(originalBoss);
+        });
+
+        it("should apply JUGGLE_TAG and add a pending active tag", () => {
+            const playerId = "skip-juggle-tag";
+            service.initGame(playerId);
+            const state = getGameState(playerId)!;
+            state.blindState.currentAnteConfig.small.tagCode = TAG_CODE.JUGGLE_TAG;
+            state.blindState.blindType = "small";
+            state.blindState.round = 1;
+
+            const res = service.skipBlind("small", 1, playerId);
+
+            expect(res.code).toBe(RESULT_CODE.SUCCESS);
+            const active = (service as unknown as { activeTags: Record<string, any[]> }).activeTags[playerId];
+            expect(active).toBeDefined();
+            expect(active.some((t) => t.code === TAG_CODE.JUGGLE_TAG && t.status === "pending")).toBe(true);
+        });
     });
 
     beforeEach(() => {

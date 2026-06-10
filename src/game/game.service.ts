@@ -2,7 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
-import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "../poker/boss.config";
+import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "./boss.config";
+import { TAG_CODE, TagCode } from "./tag.config";
+import { TOTAL_ANTE_COUNT } from "./blind.config";
 
 import { BLIND_SCORE_CONFIG } from "./blind.config";
 import {
@@ -10,11 +12,13 @@ import {
     PlayerState,
     BlindState,
     GameStateResponse,
-    SelectCardsResult,
+    GameActionResult,
     DealResult,
     AnteConfig,
     Progress,
     NextBlindConfig,
+    SkippableBlindType,
+    PlayerActiveTag,
 } from "./game.types";
 
 import {
@@ -47,6 +51,9 @@ export class GameService {
      */
     private readonly bossBlindAssignments: Record<string, BossBlindCode[]> = {};
 
+    private readonly tagAssignments: Record<string, TagCode[]> = {};
+    private readonly activeTags: Record<string, PlayerActiveTag[]> = {};
+
     constructor(private readonly pokerService: PokerService) {}
 
     /**
@@ -60,13 +67,13 @@ export class GameService {
      * It does not deal cards.
      * Actual gameplay starts in startGame().
      */
-    initGame(playerId: string): GameState {
-        if (this.gameStates[playerId]) delete this.gameStates[playerId];
-        if (this.bossBlindAssignments[playerId]) delete this.bossBlindAssignments[playerId];
+    public initGame(playerId: string): GameState {
+        this.clearPlayerRuntimeState(playerId);
         // this.logger.log(`Initializing game for player: ${playerId}`);
 
         const gameState: GameState = this.createInitialGameState(playerId);
         this.gameStates[playerId] = gameState;
+
         return gameState;
     }
 
@@ -76,7 +83,7 @@ export class GameService {
      * This method assumes the game has already been initialized.
      * It only prepares the current playable round.
      */
-    startGame(playerId: string): DealResult {
+    public startGame(playerId: string): DealResult {
         const gameState: GameState = this.gameStates[playerId];
         const playerState: PlayerState = this.gameStates[playerId]?.playerState;
         const blindState: BlindState = this.gameStates[playerId]?.blindState;
@@ -88,7 +95,21 @@ export class GameService {
             };
         }
 
-        const handSize: number = playerState.handSize;
+        let handSize: number = playerState.handSize;
+
+        // this.logger.log(
+        //     `Starting game for player: ${playerId}, current activeTags: ${JSON.stringify(this.activeTags[playerId])}`,
+        // );
+
+        if (this.activeTags[playerId]?.some((tag) => tag.code === TAG_CODE.JUGGLE_TAG && tag.status === "pending")) {
+            handSize += 3;
+            this.activeTags[playerId].forEach((tag) => {
+                if (tag.code === TAG_CODE.JUGGLE_TAG && tag.status === "pending") {
+                    tag.status = "applied";
+                }
+            });
+        }
+
         if (gameState.gameStatus == "playing") {
             return {
                 code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
@@ -130,8 +151,8 @@ export class GameService {
             playerState: {
                 hand: playerState.hand,
                 remainingDeckCount: playerState.deck.length,
-                playsLeft: GAME_RULE.INITIAL_PLAYS_LEFT,
-                discardsLeft: GAME_RULE.INITIAL_DISCARDS_LEFT,
+                playsLeft: playerState.playsLeft,
+                discardsLeft: playerState.discardsLeft,
             },
             blindState: {
                 round: blindState.round,
@@ -156,7 +177,7 @@ export class GameService {
      * - blind progression check
      * - response construction with updated game state and progression info
      */
-    selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): SelectCardsResult {
+    public selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): GameActionResult {
         const gameState: GameState = this.gameStates[playerId];
         const playerState: PlayerState = gameState?.playerState;
         const blindState: BlindState = gameState?.blindState;
@@ -169,31 +190,31 @@ export class GameService {
         // this.logger.log(`Current gameState before action: ${JSON.stringify(gameState)}`);
 
         if (!playerId || !gameState) {
-            return this.buildSelectCardsResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action: action });
+            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action: action });
         }
 
         if (gameState.gameStatus !== "playing") {
-            return this.buildSelectCardsResult({ code: GAME_STATE_CODE.GAME_NOT_STARTED, action: action });
+            return this.buildActionResult({ code: GAME_STATE_CODE.GAME_NOT_STARTED, action: action });
         }
 
         const handCards: string[] = playerState.hand;
 
         if (!selectedCards?.length) {
-            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, action: action });
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, action: action });
         }
 
         if (selectedCards?.length > GAME_RULE.MAX_SELECT_CARDS) {
-            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, action: action });
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, action: action });
         }
 
         const validCard = selectedCards.every((card) => CARD_PATTERN.test(card));
         if (!validCard) {
-            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, action: action });
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, action: action });
         }
 
         const selectedSet = new Set(selectedCards);
         if (selectedSet.size !== selectedCards.length) {
-            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, action: action });
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, action: action });
         }
 
         const existCards = selectedCards.every((item) => handCards.includes(item));
@@ -201,19 +222,19 @@ export class GameService {
             this.logger.warn(
                 `Player ${playerId} selected cards not in hand. selectedCards: ${JSON.stringify(selectedCards)}, handCards: ${JSON.stringify(handCards)}`,
             );
-            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, action: action });
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, action: action });
         }
 
         if (action !== SELECT_CARD_ACTION.PLAY && action !== SELECT_CARD_ACTION.DISCARD) {
-            return this.buildSelectCardsResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, action: action });
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, action: action });
         }
 
         if (action == SELECT_CARD_ACTION.PLAY && playerState.playsLeft <= 0) {
-            return this.buildSelectCardsResult({ code: GAME_FLOW_CODE.NO_PLAYS_LEFT, action: action });
+            return this.buildActionResult({ code: GAME_FLOW_CODE.NO_PLAYS_LEFT, action: action });
         }
 
         if (action == SELECT_CARD_ACTION.DISCARD && playerState.discardsLeft <= 0) {
-            return this.buildSelectCardsResult({ code: GAME_FLOW_CODE.NO_DISCARDS_LEFT, action: action });
+            return this.buildActionResult({ code: GAME_FLOW_CODE.NO_DISCARDS_LEFT, action: action });
         }
 
         if (action == SELECT_CARD_ACTION.PLAY) {
@@ -236,7 +257,7 @@ export class GameService {
         if (action == SELECT_CARD_ACTION.PLAY) playerState.playsLeft--;
         if (action == SELECT_CARD_ACTION.DISCARD) playerState.discardsLeft--;
 
-        const selectCardsResult = this.buildSelectCardsResult({
+        const selectCardsResult = this.buildActionResult({
             code: RESULT_CODE.SUCCESS,
             action,
             selectedCards,
@@ -255,6 +276,73 @@ export class GameService {
     }
 
     /**
+     * Handles the skip-blind action.
+     * Claims the current blind's tag reward and advances the game to the next blind.
+     */
+    public skipBlind(blindType: SkippableBlindType, round: number, playerId: string): GameActionResult {
+        const gameState: GameState = this.gameStates[playerId];
+        const action = "skipBlind";
+
+        if (!gameState) {
+            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
+        }
+        const blindState: BlindState = gameState.blindState;
+        if (blindState.round != round || blindState.blindType != blindType) {
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_BLIND_STATE, action });
+        }
+
+        if (blindType !== "small" && blindType !== "big") {
+            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, action });
+        }
+
+        if (!this.activeTags[playerId]) this.activeTags[playerId] = [];
+
+        const tagCode: TagCode = blindState.currentAnteConfig[blindType].tagCode;
+
+        // Rerolls the next Boss Blind
+        if (tagCode === TAG_CODE.BOSS_TAG) {
+            const currentBossCode = blindState.currentAnteConfig.boss.code;
+
+            const bossBlindCodeList: BossBlindCode[] = Object.values(BOSS_BLIND_CODE).filter(
+                (code) => code !== currentBossCode,
+            );
+
+            const newBossBlindCode = bossBlindCodeList[Math.floor(Math.random() * bossBlindCodeList.length)];
+
+            blindState.currentAnteConfig.boss.code = newBossBlindCode;
+            blindState.currentAnteConfig.boss.name = BOSS_BLIND_CONFIG[newBossBlindCode].name;
+
+            // this.logger.log(
+            //     `Player ${playerId} used ${tagConfig.name} to reroll Boss Blind. New Boss Blind: ${blindState.currentAnteConfig.boss.name}`,
+            // );
+        } else if (tagCode == TAG_CODE.JUGGLE_TAG) {
+            this.activeTags[playerId].push({
+                code: TAG_CODE.JUGGLE_TAG,
+                status: "pending",
+            });
+        }
+
+        const nextProgress = this.getNextBlindProgress(gameState);
+
+        const progress: Progress = {
+            gameOver: false,
+            blindOver: true,
+            currentAnteConfig: blindState.currentAnteConfig,
+            nextBlindConfig: nextProgress.nextBlindConfig,
+        };
+
+        this.advanceToNextBlind(gameState, nextProgress);
+
+        return {
+            code: RESULT_CODE.SUCCESS,
+            message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
+            action: "skipBlind",
+            progress,
+            blindState,
+        };
+    }
+
+    /**
      * Builds the unified selectCards response structure.
      *
      * The response is grouped by responsibility:
@@ -265,18 +353,18 @@ export class GameService {
      *
      * This prevents the response structure from becoming a large flat object as gameplay systems expand.
      */
-    private buildSelectCardsResult(param: {
+    private buildActionResult(param: {
         code: number;
-        action: "play" | "discard";
+        action: "play" | "discard" | "skipBlind";
         selectedCards?: string[];
         gameState?: GameState;
         cardType?: number;
         validCards?: string[];
         baseScore?: number;
         multiplier?: number;
-    }): SelectCardsResult {
+    }): GameActionResult {
         const { code, action, selectedCards, gameState, cardType, validCards, baseScore, multiplier } = param;
-        // this.logger.log(`buildSelectCardsResult : ${JSON.stringify(param)}`);
+        // this.logger.log(`buildActionResult : ${JSON.stringify(param)}`);
 
         if (code != RESULT_CODE.SUCCESS) {
             return { code, message: CODE_DESCRIPTION[code], action };
@@ -339,31 +427,7 @@ export class GameService {
         };
 
         if (blindOver) {
-            const result = blindStates.currentBlindScore >= blindStates.targetScore ? "WIN" : "LOSE";
-
-            progress.settlement = {
-                finalScore: blindStates.currentBlindScore,
-                targetScore: blindStates.targetScore,
-                result: result,
-            };
-
-            if (result === "LOSE") {
-                progress.gameOver = true;
-                delete this.gameStates[gameState.playerId];
-                this.logger.log(
-                    `Player ${gameState.playerId} lost the blind. Game over. Final score: ${blindStates.currentBlindScore}, Target score: ${blindStates.targetScore}`,
-                );
-            } else {
-                const nextProgress = this.getNextBlindProgress(gameState);
-
-                progress.nextBlindConfig = nextProgress.nextBlindConfig;
-
-                if (nextProgress.nextAnteConfig) {
-                    progress.nextAnteConfig = nextProgress.nextAnteConfig;
-                }
-
-                this.advanceToNextBlind(gameState, nextProgress);
-            }
+            this.resolveProgressAfterBlind(gameState, blindStates, progress);
         }
 
         return {
@@ -386,8 +450,9 @@ export class GameService {
                 newHand.push(handCards[i]);
             }
         }
+        const handSize: number = handCards.length;
 
-        const getSize: number = gameState.playerState.handSize - newHand.length;
+        const getSize: number = handSize - newHand.length;
         const getDeck: string[] = this.pokerService.serializeCards(deck.splice(0, getSize));
 
         newHand.push(...getDeck);
@@ -495,26 +560,52 @@ export class GameService {
         let bossBlindAssignmentsByPlayer = this.bossBlindAssignments[playerId];
         if (!bossBlindAssignmentsByPlayer) {
             const bossBlindCodeList: BossBlindCode[] = Object.values(BOSS_BLIND_CODE);
-            bossBlindAssignmentsByPlayer = this.shuffleBossConfig(bossBlindCodeList);
+            bossBlindAssignmentsByPlayer = this.shuffleConfig(bossBlindCodeList);
 
             this.bossBlindAssignments[playerId] = bossBlindAssignmentsByPlayer;
         }
         // this.logger.log(`Player ${playerId}, bossBlindAssignments: ${JSON.stringify(this.bossBlindAssignments[playerId])}`);
 
-        const code = bossBlindAssignmentsByPlayer.pop();
+        let tagAssignmentsByPlayer = this.tagAssignments[playerId];
+        if (!tagAssignmentsByPlayer) {
+            const baseTagCodeList: TagCode[] = Object.values(TAG_CODE);
+            const allTagCodes: TagCode[] = [];
+
+            // Temporary workaround
+            // only 2 tags are defined for now, so expand them to cover all skippable blinds first.
+            // This is a transitional assignment strategy for current stage.
+            const totalSkipBlindCount = TOTAL_ANTE_COUNT * 2;
+            for (let i = 0; i < totalSkipBlindCount; i++) {
+                allTagCodes.push(baseTagCodeList[i % baseTagCodeList.length]);
+            }
+
+            tagAssignmentsByPlayer = this.shuffleConfig(allTagCodes);
+            this.tagAssignments[playerId] = tagAssignmentsByPlayer;
+        }
+        // this.logger.log(`Player ${playerId}, tagAssignments: ${JSON.stringify(this.tagAssignments[playerId])}`);
+
+        const code = bossBlindAssignmentsByPlayer.shift();
         if (!code) {
             throw new Error(`No more boss blind code available for player: ${playerId}`);
         }
 
-        const blindConfig = BLIND_SCORE_CONFIG[ante];
-        if (!blindConfig) {
-            throw new Error(`Blind config not found for ante: ${ante}`);
+        const smallTag = tagAssignmentsByPlayer.shift();
+        const bigTag = tagAssignmentsByPlayer.shift();
+
+        if (!smallTag || !bigTag) {
+            throw new Error(`No more tag code available for player: ${playerId}`);
         }
 
         const currentAnteConfig = {
             ante: ante,
-            small: { score: BLIND_SCORE_CONFIG[ante][0].score },
-            big: { score: BLIND_SCORE_CONFIG[ante][1].score },
+            small: {
+                score: BLIND_SCORE_CONFIG[ante][0].score,
+                tagCode: smallTag,
+            },
+            big: {
+                score: BLIND_SCORE_CONFIG[ante][1].score,
+                tagCode: bigTag,
+            },
             boss: {
                 score: BLIND_SCORE_CONFIG[ante][2].score,
                 code: code,
@@ -556,12 +647,67 @@ export class GameService {
         }
     }
 
-    private shuffleBossConfig<T>(arr: T[]): T[] {
+    private shuffleConfig<T>(arr: T[]): T[] {
         const out = [...arr];
         for (let i = out.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [out[i], out[j]] = [out[j], out[i]];
         }
         return out;
+    }
+
+    /**
+     * Removes one-round tags that have already been applied and should no longer remain active.
+     */
+    private cleanupExpiredTags(playerId: string): void {
+        this.activeTags[playerId] = (this.activeTags[playerId] ?? []).filter(
+            (tag) => !(tag.code === TAG_CODE.JUGGLE_TAG && tag.status === "applied"),
+        );
+    }
+
+    /**
+     * Resolves the game progress after a blind ends.
+     * Updates settlement info, advances to the next blind if needed, or clears runtime state on game over.
+     */
+    private resolveProgressAfterBlind(gameState: GameState, blindStates: BlindState, progress: Progress): void {
+        const result = blindStates.currentBlindScore >= blindStates.targetScore ? "WIN" : "LOSE";
+
+        progress.settlement = {
+            finalScore: blindStates.currentBlindScore,
+            targetScore: blindStates.targetScore,
+            result: result,
+        };
+
+        if (result === "LOSE") {
+            progress.gameOver = true;
+
+            this.clearPlayerRuntimeState(gameState.playerId);
+
+            // this.logger.log(
+            //     `Player ${gameState.playerId} lost the blind. Game over. Final score: ${blindStates.currentBlindScore}, Target score: ${blindStates.targetScore}`,
+            // );
+        } else {
+            const nextProgress = this.getNextBlindProgress(gameState);
+
+            progress.nextBlindConfig = nextProgress.nextBlindConfig;
+
+            if (nextProgress.nextAnteConfig) {
+                progress.nextAnteConfig = nextProgress.nextAnteConfig;
+            }
+
+            this.advanceToNextBlind(gameState, nextProgress);
+            this.cleanupExpiredTags(gameState.playerId);
+        }
+    }
+
+    /**
+     * Clears all runtime state associated with the current player.
+     * Used when the game ends or when the player starts a new game.
+     */
+    private clearPlayerRuntimeState(playerId: string): void {
+        delete this.gameStates[playerId];
+        delete this.activeTags[playerId];
+        delete this.bossBlindAssignments[playerId];
+        delete this.tagAssignments[playerId];
     }
 }

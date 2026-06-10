@@ -1,6 +1,8 @@
 import { Card } from "../poker/poker.types";
 import { BlindType } from "./blind.config";
+import { TagCode } from "./tag.config";
 export type GameStatus = "initialized" | "playing" | "finished";
+export type SkippableBlindType = "small" | "big";
 
 export type GameState = {
     playerId: string;
@@ -51,11 +53,11 @@ export type GameStateResponse = {
     targetScore: number;
 };
 
-export type SelectCardsResult = {
+export type GameActionResult = {
     code: number;
     message: string;
 
-    action?: "play" | "discard";
+    action?: "play" | "discard" | "skipBlind";
 
     scoreDetail?: {
         selectedCards: string[];
@@ -138,13 +140,20 @@ export type AnteConfig = {
     ante: number;
     small: {
         score: number;
+        tagCode: TagCode;
     };
     big: {
         score: number;
+        tagCode: TagCode;
     };
     boss: {
         score: number;
         code: number;
         name: string;
     };
+};
+
+export type PlayerActiveTag = {
+    code: TagCode;
+    status: "pending" | "applied";
 };

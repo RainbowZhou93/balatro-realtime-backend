@@ -8,6 +8,7 @@ import {
 } from "@nestjs/websockets";
 import { Logger } from "@nestjs/common";
 import { GameService } from "./game.service";
+import { SkippableBlindType } from "./game.types";
 
 type GatewayClient = WebSocket & {
     _socket?: {
@@ -87,5 +88,21 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         const selectCardsResult = this.gameService.selectCards(data.selectedCards, data.action, playerId);
         return { event: "selectCardsResult", data: selectCardsResult };
+    }
+
+    @SubscribeMessage("skipBlind")
+    handleSkipBlind(
+        @MessageBody() data: { blindType: SkippableBlindType; round: number },
+        @ConnectedSocket() client: GatewayClient,
+    ): object {
+        const playerId = client.__clientId;
+        if (!playerId)
+            return {
+                event: "error",
+                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in skipBlind" },
+            };
+
+        const skipBlindResult = this.gameService.skipBlind(data.blindType, data.round, playerId);
+        return { event: "skipBlindResult", data: skipBlindResult };
     }
 }

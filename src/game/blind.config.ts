@@ -42,3 +42,5 @@ export const BLIND_SCORE_CONFIG = {
         { type: "boss", score: 700 },
     ],
 } as const;
+
+export const TOTAL_ANTE_COUNT = Object.keys(BLIND_SCORE_CONFIG).length;
