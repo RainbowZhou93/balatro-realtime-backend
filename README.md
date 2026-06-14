@@ -4,11 +4,20 @@
 
 Current focus:
 
-- Blind / stage progression system
+- Reward settlement and money state design
+- Economy system foundation
+- Shop / reward / build-growth lifecycle
 - Stateful game lifecycle evolution
-- Boss Blind mechanics
 - Realtime game state management
+
+Completed recently:
+
+- Blind / stage progression system
+- Boss Blind mechanics
 - Skip Blind and Tag reward system
+- Blind reward settlement
+- Player money state
+- Basic economy rule configuration
 
 ---
 
@@ -20,11 +29,13 @@ A realtime backend system for a Balatro-like card game, built with Node.js, Type
 
 This project is not only a game logic practice, but also a long-term backend engineering project.
 
-This project is inspired by Balatro, but focuses primarily on backend architecture and realtime game state management rather than recreating the original game entirely.
+This project is inspired by Balatro, but focuses primarily on backend architecture, realtime game state management, and progressive system design rather than recreating the original game entirely.
 
 The goal is to gradually implement core backend capabilities through a complete card game server, including:
 
 - state management
+- reward settlement
+- economy system design
 - cache layering
 - persistence
 - recovery
@@ -37,6 +48,8 @@ The goal is to gradually implement core backend capabilities through a complete 
 
 - 状态机设计
 - WebSocket 实时通信
+- Blind 生命周期管理
+- 奖励结算与经济系统
 - Redis 缓存分层
 - MySQL 持久化
 - 游戏状态恢复
@@ -62,7 +75,7 @@ The goal is to gradually implement core backend capabilities through a complete 
 
 ## Backend Architecture
 
-Current structure (Phase 2):
+Current structure:
 
 - WebSocket Gateway (entry point)
 - Game Service (orchestration layer)
@@ -71,10 +84,12 @@ Current structure (Phase 2):
 - In-memory per-player runtime state
 - Player state management
 - Blind / Ante / Round state management
-- Blind score configuration
+- Blind score and reward configuration
 - Basic Blind progression and settlement flow
 - Skip Blind decision flow
 - Tag preview assignment and runtime tag handling
+- Reward settlement and money state update
+- Basic economy rule configuration
 
 Current state structure:
 
@@ -88,6 +103,7 @@ Current state structure:
     - plays/discards
     - hand size
     - currentActionScore
+    - money
 
   - blindState
     - round
@@ -99,18 +115,32 @@ Current state structure:
     - nextAnteConfig?
 
   - gameStatus
+
+  - progress / settlement response
+    - finalScore
+    - targetScore
+    - result
+    - reward?
+      - baseMoney
+      - remainingHandBonusMoney
+      - interestMoney
+      - currentBlindRewardMoney
+      - moneyAfterReward
 ```
 
 Future improvements:
 
+- Shop entry and shop lifecycle
+- Buy / skip / reroll flow
+- Joker and modifier system
+- Voucher / Tag / Joker economy interaction
 - Redis for state persistence
 - MySQL for long-term storage
 - Distributed session handling
 - Expand Boss Blind and effect coverage
 - Expand Tag types and effect coverage
-- Shop and modifier system
 
-The system is evolving from a single-game lifecycle into a staged game engine with Blind-based progression.
+The system is evolving from a single-game lifecycle into a staged game engine with Blind-based progression, reward settlement, and build-growth loops.
 
 ---
 
@@ -119,6 +149,7 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 - Implement a realtime game backend
 - Practice backend architecture design
 - Build a state-driven game engine
+- Support reward settlement and economy growth
 - Support cache + persistence layering
 - Support recovery after restart
 - Keep the project extensible
@@ -130,10 +161,10 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 
 - Phase 1: Single game flow
 - Phase 2: Blind / stage system
-- Phase 3: Persistence and cache
-- Phase 4: Engineering and deployment
-- Phase 5: Effect / modifier system
-- Phase 6: Shop and reward system
+- Phase 3: Reward, shop and build-growth system
+- Phase 4: Persistence and cache
+- Phase 5: Engineering and deployment
+- Phase 6: Effect / modifier system
 - Phase 7: Special cards
 - Phase 8: AI / Go / extension
 
@@ -156,6 +187,11 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 - Skip Blind action flow
 - Tag reward preview and assignment
 - Basic Tag effect handling (Boss Tag, Juggle Tag)
+- Blind reward settlement
+- Player money state
+- Reward detail response
+- Basic interest calculation
+- Basic economy rule configuration
 
 ---
 
@@ -163,36 +199,57 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 
 ### Phase 1 - Single game flow
 
-✔ Card type judgment implementation
-✔ Unit test for hand evaluation
-✔ Initialize NestJS structure
-✔ Migrate hand evaluator to module
-✔ Add WebSocket gateway
-✔ Implement deck generation (52 cards)
-✔ Implement shuffle algorithm (Fisher-Yates)
-✔ Implement card dealing logic
-✔ Introduce server-side deck state management
-✔ Implement play / discard / draw flow
-✔ Add scoring calculation
-✔ Add round settlement logic
-✔ Add game over state management
-✔ Refactor and extend unit tests
+✔ Card type judgment implementation   
+✔ Unit test for hand evaluation 
+✔ Initialize NestJS structure   
+✔ Migrate hand evaluator to module 
+✔ Add WebSocket gateway   
+✔ Implement deck generation (52 cards)   
+✔ Implement shuffle algorithm (Fisher-Yates)   
+✔ Implement card dealing logic  
+✔ Introduce server-side deck state management  
+✔ Implement play / discard / draw flow   
+✔ Add scoring calculation 
+✔ Add round settlement logic 
+✔ Add game over state management   
+✔ Refactor and extend unit tests   
 
 ### Phase 2 - Blind / stage system
 
-✔ Refactor GameState into playerState and blindState
-✔ Add Blind score configuration
-✔ Add round / ante / blindType state
-✔ Add currentBlindScore and targetScore tracking
-✔ Implement Blind settlement flow
-✔ Advance to next Blind after clearing current Blind
-✔ Reset game state after failure
-✔ Update unit tests for Blind progression
-✔ Add Boss Blind special rules
-✔ Add Skip Blind action handling
-✔ Add Tag reward preview to Blind state
-✔ Implement basic Tag runtime handling
-✔ Support representative Tag effects (Boss Tag, Juggle Tag)
+✔ Refactor GameState into playerState and blindState 
+✔ Add Blind score configuration 
+✔ Add round / ante / blindType state  
+✔ Add currentBlindScore and targetScore tracking  
+✔ Implement Blind settlement flow  
+✔ Advance to next Blind after clearing current Blind 
+✔ Reset game state after failure   
+✔ Update unit tests for Blind progression   
+✔ Add Boss Blind special rules  
+✔ Add Skip Blind action handling   
+✔ Add Tag reward preview to Blind state  
+✔ Implement basic Tag runtime handling   
+✔ Support representative Tag effects (Boss Tag, Juggle Tag)   
+
+### Phase 3 - Reward, shop and build-growth system
+
+🚧 In progress
+
+✔ Add player money state  
+✔ Add Blind base reward money configuration 
+✔ Add economy rule configuration   
+✔ Add reward detail structure   
+✔ Add Blind reward settlement flow 
+✔ Add remaining hand bonus reward  
+✔ Add interest reward calculation  
+✔ Update player money after Blind win 
+
+Planned next:
+
+- Shop entry flow 
+- Shop buy / skip / reroll actions  
+- Shop item generation  
+- Joker / Tag / Voucher economy interaction  
+- Build-growth lifecycle after Blind settlement 
 
 ---
 
@@ -221,6 +278,15 @@ Connect to:
 ws://localhost:8088
 ```
 
+### initGame
+
+```json
+{
+  "event": "initGame",
+  "data": {}
+}
+```
+
 ### startGame
 
 ```json
@@ -242,25 +308,18 @@ ws://localhost:8088
 }
 ```
 
+
 ### skipBlind
+
 ```json
 {
-  "event":"skipBlind",
-  "data":{
-    "blindType": "small", 
+  "event": "skipBlind",
+  "data": {
+    "blindType": "small",
     "round": 1
   }
 }
 ```
-
-Response includes:
-
-- Updated hand
-- Current score
-- Total score
-- Remaining plays/discards
-- Settlement result
-- Game over state
 
 ### 3. Run tests
 
@@ -282,7 +341,6 @@ Each article corresponds to a specific implementation stage and commit history.
 
 ### Released Articles
 🔗 Full Blog Series -> [CSDN](https://blog.csdn.net/weixin_43239068/category_13163951.html)
-
 
 #### Core Series
 
@@ -307,6 +365,14 @@ Each article corresponds to a specific implementation stage and commit history.
 7. Boss Blind Design and Special Rule Handling    
    从0到1实现Balatro游戏后端（7）：Boss Blind与特殊规则实现
 
+8. Skip Blind and Tag Reward Mechanism Design   
+   从0到1实现Balatro游戏后端（8）：跳过Blind与Tag奖励机制设计  
+
+9. Blind Reward Settlement and Money State Design  
+   从0到1实现Balatro游戏后端（9）：Blind奖励结算与金币状态设计 
+
+
+
 #### Advanced Topics
 
 1. Custom NestJS WebSocket Adapter for Message Interception  
@@ -321,7 +387,7 @@ Each article corresponds to a specific implementation stage and commit history.
 ---
 
 ### Upcoming Articles
-8. Skip Blind Reward System
-9. Multi-stage Lifecycle Management
+
+10. Shop Entry and Economy Flow Design
 
 (Updating...)
