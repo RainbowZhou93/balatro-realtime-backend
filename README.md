@@ -4,7 +4,9 @@
 
 📖 配套博客持续更新中 -> 🔗 [CSDN](https://blog.csdn.net/weixin_43239068/category_13163951.html)
 
-⭐ 当前开发阶段：Blind / Boss Blind / Tag 奖励系统
+⭐ 当前开发阶段：奖励、商店与构筑成长系统
+
+当前已完成：Blind / Boss Blind / Skip Blind / Tag 奖励机制 / Blind 奖励结算与金币状态设计
 
 🚧 项目持续开发中
 
@@ -20,7 +22,7 @@
 | 通信方式  | WebSocket                |
 | 测试框架  | Jest                     |
 | CI/CD | GitHub Actions           |
-| 当前阶段  | Blind 关卡系统               |
+| 当前阶段  | 奖励、商店与构筑成长系统             |
 | 项目状态  | 持续开发中                    |
 | 配套内容  | CSDN 系列博客                |
 
@@ -35,6 +37,7 @@
 * 状态机设计
 * WebSocket 实时通信
 * 游戏生命周期管理
+* 奖励结算与经济系统
 * Redis 缓存设计
 * MySQL 持久化
 * 服务恢复
@@ -65,6 +68,8 @@ E --> G[blindState]
 
 E --> H[gameStatus]
 
+F --> O[money]
+
 G --> I[Blind推进]
 
 I --> J[Small Blind]
@@ -78,6 +83,12 @@ J --> M[Skip Blind]
 K --> M
 
 M --> N[Tag奖励]
+
+I --> P[Blind奖励结算]
+
+P --> Q[RewardMoneyDetail]
+
+P --> O
 
 N --> G
 ```
@@ -101,6 +112,9 @@ N --> G
 | Boss Blind        | ✅  |
 | Skip Blind        | ✅  |
 | Tag 奖励系统          | ✅  |
+| Blind 奖励结算        | ✅  |
+| 金币状态设计            | ✅  |
+| 经济规则配置            | ✅  |
 | Jest 单元测试         | ✅  |
 | GitHub Actions CI | ✅  |
 | Joker 系统          | 🚧 |
@@ -127,7 +141,7 @@ N --> G
 
 ## Phase 2：Blind 关卡系统
 
-🚧 开发中
+✅ 已完成
 
 * Blind 生命周期管理
 * Boss Blind 特殊规则
@@ -136,7 +150,20 @@ N --> G
 
 ---
 
-## Phase 3：持久化与缓存
+## Phase 3：奖励、商店与构筑成长系统
+
+🚧 开发中
+
+* Blind 奖励结算
+* 金币状态设计
+* 利息结算规则
+* 商店入口设计
+* 商店购买 / 跳过 / 刷新
+* Joker / Tag / Voucher 与经济系统联动
+
+---
+
+## Phase 4：持久化与缓存
 
 📌 计划中
 
@@ -146,7 +173,7 @@ N --> G
 
 ---
 
-## Phase 4：工程化部署
+## Phase 5：工程化部署
 
 📌 计划中
 
@@ -156,23 +183,13 @@ N --> G
 
 ---
 
-## Phase 5：效果系统
+## Phase 6：效果系统与扩展玩法
 
 📌 计划中
 
 * Joker 系统
 * Modifier 系统
 * 特殊效果扩展
-
----
-
-## Phase 6：商店系统
-
-📌 计划中
-
-* 商店购买
-* 奖励机制
-* 经济系统
 
 ---
 
@@ -225,9 +242,16 @@ npm run start:prod
 ws://localhost:8088
 ```
 
----
+### initGame
 
-## startGame
+```json
+{
+   "event": "initGame",
+   "data": {}
+}
+```
+
+### startGame
 
 ```json
 {
@@ -289,7 +313,8 @@ npm test
 5. 得分计算与单局结算流程实现
 6. Blind关卡状态设计与回合推进实现
 7. Boss Blind与特殊规则实现
-8. 跳过Blind与Tag奖励机制设计（进行中）
+8. 跳过Blind与Tag奖励机制设计
+9. Blind奖励结算与金币状态设计（进行中）
 
 ## 进阶系列
 
@@ -305,6 +330,8 @@ npm test
 
 * 状态驱动设计
 * 实时通信架构
+* 游戏生命周期管理
+* 奖励结算与经济系统
 * 缓存与持久化
 * 服务恢复能力
 * 自动化测试
