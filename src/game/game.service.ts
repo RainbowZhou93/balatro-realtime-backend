@@ -4,9 +4,9 @@ import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
 import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "./boss.config";
 import { TAG_CODE, TagCode } from "./tag.config";
-import { TOTAL_ANTE_COUNT } from "./blind.config";
+import { TOTAL_ANTE_COUNT, BLIND_SCORE_CONFIG } from "./blind.config";
 
-import { BLIND_SCORE_CONFIG } from "./blind.config";
+import { ECONOMY_RULE, BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
 import {
     GameState,
     PlayerState,
@@ -19,6 +19,7 @@ import {
     NextBlindConfig,
     SkippableBlindType,
     PlayerActiveTag,
+    RewardMoneyDetail,
 } from "./game.types";
 
 import {
@@ -120,6 +121,7 @@ export class GameService {
                     remainingDeckCount: playerState.deck.length,
                     playsLeft: playerState.playsLeft,
                     discardsLeft: playerState.discardsLeft,
+                    money: playerState.money,
                 },
                 blindState: {
                     round: blindState.round,
@@ -153,6 +155,7 @@ export class GameService {
                 remainingDeckCount: playerState.deck.length,
                 playsLeft: playerState.playsLeft,
                 discardsLeft: playerState.discardsLeft,
+                money: playerState.money,
             },
             blindState: {
                 round: blindState.round,
@@ -286,9 +289,19 @@ export class GameService {
         if (!gameState) {
             return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
         }
+
+        if (gameState.gameStatus !== "initialized") {
+            return this.buildActionResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SKIP, action });
+        }
+
         const blindState: BlindState = gameState.blindState;
         if (blindState.round != round || blindState.blindType != blindType) {
             return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_BLIND_STATE, action });
+        }
+
+        const playerStates: PlayerState = gameState.playerState;
+        if (!playerStates) {
+            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
         }
 
         if (blindType !== "small" && blindType !== "big") {
@@ -331,6 +344,18 @@ export class GameService {
             nextBlindConfig: nextProgress.nextBlindConfig,
         };
 
+        const playerState: GameStateResponse = {
+            hand: playerStates.hand,
+            playsLeft: playerStates.playsLeft,
+            discardsLeft: playerStates.discardsLeft,
+            remainingDeckCount: playerStates.deck.length,
+            money: playerStates.money,
+            currentBlindScore: blindState.currentBlindScore,
+            currentActionScore: playerStates.currentActionScore,
+            gameStatus: gameState.gameStatus,
+            targetScore: blindState.targetScore,
+        };
+
         this.advanceToNextBlind(gameState, nextProgress);
 
         return {
@@ -339,6 +364,7 @@ export class GameService {
             action: "skipBlind",
             progress,
             blindState,
+            playerState,
         };
     }
 
@@ -401,17 +427,6 @@ export class GameService {
             multiplier,
         };
 
-        const playerState: GameStateResponse = {
-            hand: playerStates.hand,
-            playsLeft: playerStates.playsLeft,
-            discardsLeft: playerStates.discardsLeft,
-            remainingDeckCount: playerStates.deck.length,
-            currentBlindScore: blindStates.currentBlindScore,
-            currentActionScore: playerStates.currentActionScore,
-            gameStatus: gameState.gameStatus,
-            targetScore: blindStates.targetScore,
-        };
-
         const blindState = {
             round: blindStates.round,
             ante: ante,
@@ -429,6 +444,18 @@ export class GameService {
         if (blindOver) {
             this.resolveProgressAfterBlind(gameState, blindStates, progress);
         }
+
+        const playerState: GameStateResponse = {
+            hand: playerStates.hand,
+            playsLeft: playerStates.playsLeft,
+            discardsLeft: playerStates.discardsLeft,
+            remainingDeckCount: playerStates.deck.length,
+            money: playerStates.money,
+            currentBlindScore: blindStates.currentBlindScore,
+            currentActionScore: playerStates.currentActionScore,
+            gameStatus: gameState.gameStatus,
+            targetScore: blindStates.targetScore,
+        };
 
         return {
             code,
@@ -475,6 +502,7 @@ export class GameService {
                 discardsLeft: GAME_RULE.INITIAL_DISCARDS_LEFT,
                 handSize: GAME_RULE.DEFAULT_HAND_SIZE,
                 currentActionScore: 0,
+                money: ECONOMY_RULE.INITIAL_MONEY,
             },
             blindState: {
                 round: 1,
@@ -596,20 +624,24 @@ export class GameService {
             throw new Error(`No more tag code available for player: ${playerId}`);
         }
 
+        const blindConfig = BLIND_SCORE_CONFIG[ante];
         const currentAnteConfig = {
             ante: ante,
             small: {
-                score: BLIND_SCORE_CONFIG[ante][0].score,
+                score: blindConfig[0].score,
                 tagCode: smallTag,
+                baseRewardMoney: blindConfig[0].baseRewardMoney,
             },
             big: {
-                score: BLIND_SCORE_CONFIG[ante][1].score,
+                score: blindConfig[1].score,
                 tagCode: bigTag,
+                baseRewardMoney: blindConfig[1].baseRewardMoney,
             },
             boss: {
-                score: BLIND_SCORE_CONFIG[ante][2].score,
+                score: blindConfig[2].score,
                 code: code,
                 name: BOSS_BLIND_CONFIG[code].name,
+                baseRewardMoney: blindConfig[2].baseRewardMoney,
             },
         };
         return currentAnteConfig;
@@ -641,10 +673,15 @@ export class GameService {
         gameState.blindState.blindType = nextBlindConfig.blindType;
         gameState.blindState.targetScore = nextBlindConfig.score;
         gameState.blindState.currentBlindScore = 0;
+        gameState.gameStatus = "initialized";
 
         if (nextProgress.nextAnteConfig) {
             gameState.blindState.currentAnteConfig = nextProgress.nextAnteConfig;
         }
+    }
+
+    private applyRewardMoney(gameState: GameState, rewardMoney: number): void {
+        gameState.playerState.money += rewardMoney;
     }
 
     private shuffleConfig<T>(arr: T[]): T[] {
@@ -672,6 +709,7 @@ export class GameService {
     private resolveProgressAfterBlind(gameState: GameState, blindStates: BlindState, progress: Progress): void {
         const result = blindStates.currentBlindScore >= blindStates.targetScore ? "WIN" : "LOSE";
 
+
         progress.settlement = {
             finalScore: blindStates.currentBlindScore,
             targetScore: blindStates.targetScore,
@@ -694,10 +732,47 @@ export class GameService {
             if (nextProgress.nextAnteConfig) {
                 progress.nextAnteConfig = nextProgress.nextAnteConfig;
             }
+            const awardMoney: RewardMoneyDetail = this.calculateBlindRewardDetail(blindStates, gameState.playerState);
+            progress.settlement.reward = awardMoney;
 
+            this.applyRewardMoney(gameState, awardMoney.currentBlindRewardMoney);
             this.advanceToNextBlind(gameState, nextProgress);
             this.cleanupExpiredTags(gameState.playerId);
         }
+    }
+
+    /**
+     * Calculates the money reward detail for current completed Blind.
+     * 
+     * The reward composed of:
+     * - base money from the current Blind configuration
+     * - bouns money from remaining plays
+     * - interest money based on the player's current money before this reward is applied
+     * 
+     * This method only calculates the reward detail and does not mutate game state.
+     */
+    private calculateBlindRewardDetail(blindState: BlindState, playerState: PlayerState): RewardMoneyDetail {
+        const blindType = blindState.blindType;
+        const playsLeft = playerState.playsLeft;
+        const baseMoney = blindState.currentAnteConfig[blindType].baseRewardMoney;
+
+        const remainingHandBonusMoney = playsLeft * BLIND_REWARD_RULE.REMAINING_PLAY_BONUS_MONEY;
+        const blindRewardMoney = baseMoney + remainingHandBonusMoney;
+
+        const interestMoney = Math.min(
+            Math.floor(playerState.money / INTEREST_RULE.MONEY_PER_INTEREST),
+            INTEREST_RULE.MAX_INTEREST,
+        );
+
+        const currentBlindRewardMoney = blindRewardMoney + interestMoney;
+
+        return {
+            baseMoney,
+            remainingHandBonusMoney: remainingHandBonusMoney,
+            interestMoney: interestMoney,
+            currentBlindRewardMoney: currentBlindRewardMoney,
+            moneyAfterReward: playerState.money + currentBlindRewardMoney,
+        };
     }
 
     /**

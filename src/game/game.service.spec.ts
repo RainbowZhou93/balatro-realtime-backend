@@ -9,6 +9,7 @@ import {
     GAME_RULE,
 } from "./game.constants";
 import { TAG_CODE } from "./tag.config";
+import { BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
 
 import type { GameState } from "./game.types";
 
@@ -431,6 +432,83 @@ describe("GameService", () => {
             expect(result.progress?.settlement?.result).toBe("WIN");
             expect(result.progress?.nextBlindConfig).toBeDefined();
             expect(getGameState(playerId)).toBeDefined();
+        });
+
+        it("should return reward detail and update money when blind is won", () => {
+            const playerId = "win-via-flow";
+            const deal = initAndStart(playerId);
+            const state = getGameState(playerId)!;
+
+            state.blindState.targetScore = 1;
+            state.playerState.money = 23;
+            const preMoney = state.playerState.money;
+
+            const card = deal.playerState!.hand[0];
+            const res = service.selectCards([card], "play", playerId);
+
+            expect(res.progress?.settlement?.result).toBe("WIN");
+            const reward = res.progress?.settlement?.reward!;
+            // console.log('debug-reward', reward);
+            // console.log('debug-res-playerState', res.playerState);
+            expect(reward).toBeDefined();
+
+            const blindType = res.blindState!.blindType;
+            const baseMoney = res.progress!.currentAnteConfig[blindType].baseRewardMoney;
+
+            const remainingPlays = res.playerState!.playsLeft;
+            // debug
+            // console.log('debug-win:', { preMoney, playsLeft: remainingPlays });
+            const expectedRemainingBonus = remainingPlays * BLIND_REWARD_RULE.REMAINING_PLAY_BONUS_MONEY;
+            const expectedInterest = Math.min(Math.floor(preMoney / INTEREST_RULE.MONEY_PER_INTEREST), INTEREST_RULE.MAX_INTEREST);
+            const expectedCurrent = baseMoney + expectedRemainingBonus + expectedInterest;
+
+            expect(reward.baseMoney).toBe(baseMoney);
+            expect(reward.remainingHandBonusMoney).toBe(expectedRemainingBonus);
+            expect(reward.interestMoney).toBe(expectedInterest);
+            expect(reward.currentBlindRewardMoney).toBe(expectedCurrent);
+            expect(reward.moneyAfterReward).toBe(preMoney + expectedCurrent);
+            expect(res.playerState?.money).toBe(reward.moneyAfterReward);
+        });
+
+        it("should not return reward or update money when blind is lost", () => {
+            const playerId = "lose-via-flow";
+            const deal = initAndStart(playerId);
+            const state = getGameState(playerId)!;
+
+            state.playerState.playsLeft = 1;
+            state.blindState.targetScore = 999999;
+            state.playerState.money = 50;
+            const preMoney = state.playerState.money;
+
+            const card = deal.playerState!.hand[0];
+            const res = service.selectCards([card], "play", playerId);
+
+            expect(res.progress?.settlement?.result).toBe("LOSE");
+            expect(res.progress?.settlement?.reward).toBeUndefined();
+            expect(res.playerState?.money).toBe(preMoney);
+        });
+
+        it("should cap interest money by max interest rule", () => {
+            const playerId = "interest-cap-player";
+            const deal = initAndStart(playerId);
+            const state = getGameState(playerId)!;
+
+            state.blindState.targetScore = 1;
+            state.playerState.money = INTEREST_RULE.MONEY_PER_INTEREST * (INTEREST_RULE.MAX_INTEREST + 10);
+            const preMoney = state.playerState.money;
+
+            const card = deal.playerState!.hand[0];
+            const res = service.selectCards([card], "play", playerId);
+
+            expect(res.progress?.settlement?.result).toBe("WIN");
+            const reward = res.progress?.settlement?.reward!;
+            expect(reward.interestMoney).toBe(INTEREST_RULE.MAX_INTEREST);
+
+            const blindType = res.blindState!.blindType;
+            const baseMoney = res.progress!.currentAnteConfig[blindType].baseRewardMoney;
+            const expectedRemainingBonus = (res.playerState!.playsLeft) * BLIND_REWARD_RULE.REMAINING_PLAY_BONUS_MONEY;
+            expect(reward.currentBlindRewardMoney).toBe(baseMoney + expectedRemainingBonus + INTEREST_RULE.MAX_INTEREST);
+            expect(res.playerState?.money).toBe(preMoney + reward.currentBlindRewardMoney);
         });
     });
 });

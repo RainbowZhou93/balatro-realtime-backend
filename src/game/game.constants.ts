@@ -27,6 +27,7 @@ export const GAME_STATE_CODE = {
     GAME_NOT_STARTED: 452, // The game has not been started yet.
     GAME_ALREADY_FINISHED: 453, // The game has already finished, waiting for restart.
     GAME_NOT_FOUND: 454, // Game state not found for the player, possibly due to connection issues or server errors.
+    INVALID_GAME_STATUS_FOR_SKIP: 455, // The game is not in a valid state for skipping the blind, possibly due to client-server desynchronization or cheating attempts.
 } as const;
 
 export const SELECT_CARD_ACTION = {
