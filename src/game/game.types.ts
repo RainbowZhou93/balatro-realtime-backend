@@ -22,6 +22,8 @@ export type PlayerState = {
 
     handSize: number;
     currentActionScore: number;
+
+    money: number;
 };
 
 export type BlindState = {
@@ -44,6 +46,8 @@ export type GameStateResponse = {
     discardsLeft: number;
 
     remainingDeckCount: number;
+
+    money: number;
 
     currentBlindScore: number;
     currentActionScore: number;
@@ -96,6 +100,7 @@ export type Progress = {
         finalScore: number;
         targetScore: number;
         result: "WIN" | "LOSE";
+        reward?: RewardMoneyDetail;
     };
 
     currentAnteConfig: AnteConfig;
@@ -104,6 +109,14 @@ export type Progress = {
     // Preview data for the upcoming Blind.
     // Used by the frontend for stage transition display.
     nextBlindConfig?: NextBlindConfig;
+};
+
+export type RewardMoneyDetail = {
+    baseMoney: number;
+    remainingHandBonusMoney: number;
+    interestMoney: number;
+    currentBlindRewardMoney: number;
+    moneyAfterReward: number;
 };
 
 export type NextBlindConfig = {
@@ -125,6 +138,7 @@ export type DealResult = {
         remainingDeckCount: number;
         playsLeft: number;
         discardsLeft: number;
+        money: number
     };
 
     blindState?: {
@@ -141,15 +155,18 @@ export type AnteConfig = {
     small: {
         score: number;
         tagCode: TagCode;
+        baseRewardMoney: number;
     };
     big: {
         score: number;
         tagCode: TagCode;
+        baseRewardMoney: number;
     };
     boss: {
         score: number;
         code: number;
         name: string;
+        baseRewardMoney: number;
     };
 };
 
