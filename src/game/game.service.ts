@@ -184,7 +184,7 @@ export class GameService {
      * - blind progression check
      * - response construction with updated game state and progression info
      */
-    public selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): GameActionResult {
+    public selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): GameCommandResult {
         const gameState: GameState = this.gameStates[playerId];
         const playerState: PlayerState = gameState?.playerState;
         const blindState: BlindState = gameState?.blindState;
@@ -286,7 +286,7 @@ export class GameService {
      * Handles the skip-blind action.
      * Claims the current blind's tag reward and advances the game to the next blind.
      */
-    public skipBlind(blindType: SkippableBlindType, round: number, playerId: string): GameActionResult {
+    public skipBlind(blindType: SkippableBlindType, round: number, playerId: string): GameCommandResult {
         const gameState: GameState = this.gameStates[playerId];
         const action = "skipBlind";
 
@@ -341,14 +341,14 @@ export class GameService {
 
         const nextProgress = this.getNextBlindProgress(gameState);
 
-        const progress: Progress = {
-            gameOver: false,
-            blindOver: true,
-            currentAnteConfig: blindState.currentAnteConfig,
-            nextBlindConfig: nextProgress.nextBlindConfig,
-        };
+        // const progress: Progress = {
+        //     gameOver: false,
+        //     blindOver: true,
+        //     currentAnteConfig: blindState.currentAnteConfig,
+        //     nextBlindConfig: nextProgress.nextBlindConfig,
+        // };
 
-        const playerState: GameStateResponse = {
+        const playerState: PlayerStateResponse = {
             hand: playerStates.hand,
             playsLeft: playerStates.playsLeft,
             discardsLeft: playerStates.discardsLeft,
@@ -365,11 +365,27 @@ export class GameService {
         return {
             code: RESULT_CODE.SUCCESS,
             message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
-            action: "skipBlind",
-            progress,
-            blindState,
-            playerState,
+            actionResult: {
+                action: action,
+            },
+            state: {
+                blindState,
+                playerState,
+                gameStatus: gameState.gameStatus,
+            },
         };
+    }
+
+    public enterNextRound(playerId: string) {
+        const gameState: GameState = this.gameStates[playerId];
+        const action = "shop";
+        if (!gameState) {
+            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
+        }
+
+        if (gameState.gameStatus !== GameStatus.SHOPPING) {
+            return this.buildActionResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SKIP, action });
+        }
     }
 
     /**
@@ -392,12 +408,12 @@ export class GameService {
         validCards?: string[];
         baseScore?: number;
         multiplier?: number;
-    }): GameActionResult {
+    }): GameCommandResult {
         const { code, action, selectedCards, gameState, cardType, validCards, baseScore, multiplier } = param;
         // this.logger.log(`buildActionResult : ${JSON.stringify(param)}`);
 
         if (code != RESULT_CODE.SUCCESS) {
-            return { code, message: CODE_DESCRIPTION[code], action };
+            return { code, message: CODE_DESCRIPTION[code], actionResult: { action } };
         }
 
         if (
@@ -411,7 +427,7 @@ export class GameService {
             return {
                 code: REQUEST_PARAM_CODE.PARAM_ERROR,
                 message: CODE_DESCRIPTION[REQUEST_PARAM_CODE.PARAM_ERROR],
-                action: action,
+                actionResult: { action },
             };
         }
 
@@ -423,15 +439,18 @@ export class GameService {
 
         const ante = blindStates.currentAnteConfig.ante;
 
-        const scoreDetail = {
-            selectedCards,
-            cardType,
-            validCards,
-            baseScore,
-            multiplier,
+        const playAction: GameActionResult = {
+            action,
+            scoreDetail: {
+                selectedCards,
+                cardType,
+                validCards,
+                baseScore,
+                multiplier,
+            },
         };
 
-        const blindState = {
+        const blindState: BlindStateResponse = {
             round: blindStates.round,
             ante: ante,
             blindType: blindStates.blindType,
@@ -449,7 +468,7 @@ export class GameService {
             this.resolveProgressAfterBlind(gameState, blindStates, progress);
         }
 
-        const playerState: GameStateResponse = {
+        const playerState: PlayerStateResponse = {
             hand: playerStates.hand,
             playsLeft: playerStates.playsLeft,
             discardsLeft: playerStates.discardsLeft,
@@ -461,15 +480,18 @@ export class GameService {
             targetScore: blindStates.targetScore,
         };
 
-        return {
+        const gameCommand: GameCommandResult = {
             code,
             message: CODE_DESCRIPTION[code],
-            action: action,
-            playerState,
-            blindState,
-            progress,
-            scoreDetail,
+            actionResult: playAction,
+            state: {
+                playerState,
+                blindState,
+                gameStatus: gameState.gameStatus,
+            },
         };
+
+        return gameCommand;
     }
 
     // Based on the current player state, remove selected cards from hand and draw the same number of cards from deck.
