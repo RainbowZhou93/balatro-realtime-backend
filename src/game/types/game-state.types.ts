@@ -1,0 +1,91 @@
+import { Card } from "../../poker/poker.types";
+import { BlindType } from "../blind.config";
+import { TagCode } from "../tag.config";
+import { GameStatus } from "../constants";
+import { RewardMoneyDetail } from "./game-economy.types";
+
+export type SkippableBlindType = "small" | "big";
+export type ActionType = "play" | "discard" | "skipBlind" | "shop";
+export type PlayResult = "win" | "lose";
+
+export type GameState = {
+    playerId: string;
+    playerState: PlayerState;
+    blindState: BlindState;
+    gameStatus: GameStatus;
+};
+
+export type PlayerState = {
+    deck: Card[];
+    hand: string[];
+    playsLeft: number;
+    discardsLeft: number;
+    handSize: number;
+    currentActionScore: number;
+    money: number;
+};
+
+export type BlindState = {
+    round: number;
+    ante: number;
+    blindType: BlindType;
+    targetScore: number;
+    currentBlindScore: number;
+    currentAnteConfig: AnteConfig;
+    nextAnteConfig?: AnteConfig;
+};
+
+export type PlayerActiveTag = {
+    code: TagCode;
+    status: "pending" | "applied";
+};
+
+export type AnteConfig = {
+    ante: number;
+    small: {
+        score: number;
+        tagCode: TagCode;
+        baseRewardMoney: number;
+    };
+    big: {
+        score: number;
+        tagCode: TagCode;
+        baseRewardMoney: number;
+    };
+    boss: {
+        score: number;
+        code: number;
+        name: string;
+        baseRewardMoney: number;
+    };
+};
+
+export type NextBlindConfig = {
+    ante: number;
+    blindType: BlindType;
+    score: number;
+    boss?: {
+        code: number;
+        name: string;
+    };
+};
+
+export type Progress = {
+    gameOver: boolean;
+    blindOver: boolean;
+    settlement?: {
+        finalScore: number;
+        targetScore: number;
+        result: PlayResult;
+        reward?: RewardMoneyDetail;
+    };
+
+    currentAnteConfig: AnteConfig;
+    nextAnteConfig?: AnteConfig;
+
+    // Preview data for the upcoming Blind.
+    // Used by the frontend for stage transition display.
+    nextBlindConfig?: NextBlindConfig;
+};
+
+

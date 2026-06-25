@@ -11,8 +11,8 @@ import {
     GameState,
     PlayerState,
     BlindState,
-    GameStateResponse,
-    GameActionResult,
+    PlayerStateResponse,
+    GameCommandResult,
     DealResult,
     AnteConfig,
     Progress,
@@ -20,7 +20,10 @@ import {
     SkippableBlindType,
     PlayerActiveTag,
     RewardMoneyDetail,
-} from "./game.types";
+    ActionType,
+    BlindStateResponse,
+    GameActionResult,
+} from "./types";
 
 import {
     RESULT_CODE,
@@ -31,7 +34,8 @@ import {
     GAME_RULE,
     GAME_STATE_CODE,
     CODE_DESCRIPTION,
-} from "./game.constants";
+    GameStatus,
+} from "./constants";
 
 @Injectable()
 export class GameService {
@@ -111,7 +115,7 @@ export class GameService {
             });
         }
 
-        if (gameState.gameStatus == "playing") {
+        if (gameState.gameStatus == GameStatus.PLAYING) {
             return {
                 code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
                 message: CODE_DESCRIPTION[GAME_STATE_CODE.GAME_ALREADY_STARTED],
@@ -145,7 +149,7 @@ export class GameService {
             return this.pokerService.getCardRank(b) - this.pokerService.getCardRank(a);
         });
         playerState.hand = hand;
-        gameState.gameStatus = "playing";
+        gameState.gameStatus = GameStatus.PLAYING;
 
         const dealResult = {
             code: RESULT_CODE.SUCCESS,
@@ -196,7 +200,7 @@ export class GameService {
             return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action: action });
         }
 
-        if (gameState.gameStatus !== "playing") {
+        if (gameState.gameStatus !== GameStatus.PLAYING) {
             return this.buildActionResult({ code: GAME_STATE_CODE.GAME_NOT_STARTED, action: action });
         }
 
@@ -290,7 +294,7 @@ export class GameService {
             return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
         }
 
-        if (gameState.gameStatus !== "initialized") {
+        if (gameState.gameStatus !== GameStatus.INITIALIZED) {
             return this.buildActionResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SKIP, action });
         }
 
@@ -381,7 +385,7 @@ export class GameService {
      */
     private buildActionResult(param: {
         code: number;
-        action: "play" | "discard" | "skipBlind";
+        action: ActionType;
         selectedCards?: string[];
         gameState?: GameState;
         cardType?: number;
@@ -415,7 +419,7 @@ export class GameService {
         const blindStates: BlindState = gameState.blindState;
 
         const blindOver = this.isBlindOver(playerStates, gameState);
-        if (blindOver) gameState.gameStatus = "finished";
+        if (blindOver) gameState.gameStatus = GameStatus.FINISHED;
 
         const ante = blindStates.currentAnteConfig.ante;
 
@@ -512,7 +516,7 @@ export class GameService {
                 currentAnteConfig: currentAnteConfig,
                 currentBlindScore: 0,
             },
-            gameStatus: "initialized",
+            gameStatus: GameStatus.INITIALIZED,
         };
 
         return this.gameStates[playerId];
@@ -673,7 +677,7 @@ export class GameService {
         gameState.blindState.blindType = nextBlindConfig.blindType;
         gameState.blindState.targetScore = nextBlindConfig.score;
         gameState.blindState.currentBlindScore = 0;
-        gameState.gameStatus = "initialized";
+        gameState.gameStatus = GameStatus.SHOPPING;
 
         if (nextProgress.nextAnteConfig) {
             gameState.blindState.currentAnteConfig = nextProgress.nextAnteConfig;
@@ -707,8 +711,7 @@ export class GameService {
      * Updates settlement info, advances to the next blind if needed, or clears runtime state on game over.
      */
     private resolveProgressAfterBlind(gameState: GameState, blindStates: BlindState, progress: Progress): void {
-        const result = blindStates.currentBlindScore >= blindStates.targetScore ? "WIN" : "LOSE";
-
+        const result = blindStates.currentBlindScore >= blindStates.targetScore ? "win" : "lose";
 
         progress.settlement = {
             finalScore: blindStates.currentBlindScore,
@@ -716,7 +719,7 @@ export class GameService {
             result: result,
         };
 
-        if (result === "LOSE") {
+        if (result === "lose") {
             progress.gameOver = true;
 
             this.clearPlayerRuntimeState(gameState.playerId);
@@ -743,12 +746,10 @@ export class GameService {
 
     /**
      * Calculates the money reward detail for current completed Blind.
-     * 
      * The reward composed of:
      * - base money from the current Blind configuration
      * - bouns money from remaining plays
      * - interest money based on the player's current money before this reward is applied
-     * 
      * This method only calculates the reward detail and does not mutate game state.
      */
     private calculateBlindRewardDetail(blindState: BlindState, playerState: PlayerState): RewardMoneyDetail {

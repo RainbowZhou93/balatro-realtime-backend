@@ -8,7 +8,8 @@ import {
 } from "@nestjs/websockets";
 import { Logger } from "@nestjs/common";
 import { GameService } from "./game.service";
-import { SkippableBlindType } from "./game.types";
+import { SkippableBlindType } from "./types";
+import { GameSocketEvents, PLAYER_STATE_CODE } from "./constants";
 
 type GatewayClient = WebSocket & {
     _socket?: {

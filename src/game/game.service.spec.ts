@@ -7,7 +7,7 @@ import {
     REQUEST_PARAM_CODE,
     RESULT_CODE,
     GAME_RULE,
-} from "./game.constants";
+} from "./constants";
 import { TAG_CODE } from "./tag.config";
 import { BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
 
