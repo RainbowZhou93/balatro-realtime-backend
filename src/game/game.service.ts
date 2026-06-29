@@ -5,24 +5,28 @@ import { CARD_PATTERN } from "../poker/poker.constants";
 import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "./boss.config";
 import { TAG_CODE, TagCode } from "./tag.config";
 import { TOTAL_ANTE_COUNT, BLIND_SCORE_CONFIG } from "./blind.config";
+import { SHOP_ITEM_CONFIG, SHOP_RULE } from "./shop.config";
+import { ShopItem, ShopState, ShopStateResponse } from "./types";
 
 import { ECONOMY_RULE, BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
 import {
     GameState,
     PlayerState,
     BlindState,
-    PlayerStateResponse,
     GameCommandResult,
     DealResult,
     AnteConfig,
-    Progress,
     NextBlindConfig,
     SkippableBlindType,
     PlayerActiveTag,
     RewardMoneyDetail,
     ActionType,
-    BlindStateResponse,
     GameActionResult,
+    GameEvent,
+    GameStateResponse,
+    ShopItemResponse,
+    BlindStateResponse,
+    BlindPreparedPayload,
 } from "./types";
 
 import {
@@ -35,6 +39,7 @@ import {
     GAME_STATE_CODE,
     CODE_DESCRIPTION,
     GameStatus,
+    GameSocketEvents,
 } from "./constants";
 
 @Injectable()
@@ -59,7 +64,9 @@ export class GameService {
     private readonly tagAssignments: Record<string, TagCode[]> = {};
     private readonly activeTags: Record<string, PlayerActiveTag[]> = {};
 
-    constructor(private readonly pokerService: PokerService) {}
+    private shopItemInstanceIdCounter = 1;
+
+    constructor(private readonly pokerService: PokerService) { }
 
     /**
      * Initializes the full game lifecycle.
@@ -115,7 +122,7 @@ export class GameService {
             });
         }
 
-        if (gameState.gameStatus == GameStatus.PLAYING) {
+        if (gameState.gameStatus !== GameStatus.INITIALIZED) {
             return {
                 code: GAME_STATE_CODE.GAME_ALREADY_STARTED,
                 message: CODE_DESCRIPTION[GAME_STATE_CODE.GAME_ALREADY_STARTED],
@@ -178,11 +185,15 @@ export class GameService {
      * Handles the player's card selection action, either "play" or "discard".
      *
      * This method performs:
-     * - input validation
-     * - score calculation for "play" action
-     * - hand update (remove selected cards, draw new cards)
-     * - blind progression check
-     * - response construction with updated game state and progression info
+     * - request validation
+     * - score calculation for "play"
+     * - hand update and card drawing
+     * - blind-over detection
+     * - command result construction with domain events and final state snapshot
+     *
+     * Note:
+     * - game:blindOver describes the completed Blind.
+     * - game: stateChanged describes the latest state afer all mutations.
      */
     public selectCards(selectedCards: string[], action: "play" | "discard", playerId: string): GameCommandResult {
         const gameState: GameState = this.gameStates[playerId];
@@ -197,31 +208,31 @@ export class GameService {
         // this.logger.log(`Current gameState before action: ${JSON.stringify(gameState)}`);
 
         if (!playerId || !gameState) {
-            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action: action });
+            return this.buildCommandErrorResult({ code: PLAYER_STATE_CODE.NOT_FOUND });
         }
 
         if (gameState.gameStatus !== GameStatus.PLAYING) {
-            return this.buildActionResult({ code: GAME_STATE_CODE.GAME_NOT_STARTED, action: action });
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.GAME_NOT_STARTED, gameState });
         }
 
         const handCards: string[] = playerState.hand;
 
         if (!selectedCards?.length) {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, action: action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.EMPTY_SELECTED_CARDS, gameState });
         }
 
         if (selectedCards?.length > GAME_RULE.MAX_SELECT_CARDS) {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, action: action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.CARDS_LIMIT_EXCEEDED, gameState });
         }
 
         const validCard = selectedCards.every((card) => CARD_PATTERN.test(card));
         if (!validCard) {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, action: action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.INVALID_CARD_FORMAT, gameState });
         }
 
         const selectedSet = new Set(selectedCards);
         if (selectedSet.size !== selectedCards.length) {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, action: action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.DUPLICATE_SELECTED_CARDS, gameState });
         }
 
         const existCards = selectedCards.every((item) => handCards.includes(item));
@@ -229,19 +240,19 @@ export class GameService {
             this.logger.warn(
                 `Player ${playerId} selected cards not in hand. selectedCards: ${JSON.stringify(selectedCards)}, handCards: ${JSON.stringify(handCards)}`,
             );
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, action: action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.CARD_NOT_IN_HAND, gameState });
         }
 
         if (action !== SELECT_CARD_ACTION.PLAY && action !== SELECT_CARD_ACTION.DISCARD) {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, action: action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, gameState });
         }
 
         if (action == SELECT_CARD_ACTION.PLAY && playerState.playsLeft <= 0) {
-            return this.buildActionResult({ code: GAME_FLOW_CODE.NO_PLAYS_LEFT, action: action });
+            return this.buildCommandErrorResult({ code: GAME_FLOW_CODE.NO_PLAYS_LEFT, gameState });
         }
 
         if (action == SELECT_CARD_ACTION.DISCARD && playerState.discardsLeft <= 0) {
-            return this.buildActionResult({ code: GAME_FLOW_CODE.NO_DISCARDS_LEFT, action: action });
+            return this.buildCommandErrorResult({ code: GAME_FLOW_CODE.NO_DISCARDS_LEFT, gameState });
         }
 
         if (action == SELECT_CARD_ACTION.PLAY) {
@@ -264,7 +275,7 @@ export class GameService {
         if (action == SELECT_CARD_ACTION.PLAY) playerState.playsLeft--;
         if (action == SELECT_CARD_ACTION.DISCARD) playerState.discardsLeft--;
 
-        const selectCardsResult = this.buildActionResult({
+        const selectCardsResult: GameCommandResult = this.buildActionResult({
             code: RESULT_CODE.SUCCESS,
             action,
             selectedCards,
@@ -288,28 +299,27 @@ export class GameService {
      */
     public skipBlind(blindType: SkippableBlindType, round: number, playerId: string): GameCommandResult {
         const gameState: GameState = this.gameStates[playerId];
-        const action = "skipBlind";
 
         if (!gameState) {
-            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
+            return this.buildCommandErrorResult({ code: PLAYER_STATE_CODE.NOT_FOUND });
         }
 
         if (gameState.gameStatus !== GameStatus.INITIALIZED) {
-            return this.buildActionResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SKIP, action });
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SKIP, gameState });
         }
 
         const blindState: BlindState = gameState.blindState;
         if (blindState.round != round || blindState.blindType != blindType) {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_BLIND_STATE, action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.INVALID_BLIND_STATE, gameState });
         }
 
         const playerStates: PlayerState = gameState.playerState;
         if (!playerStates) {
-            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
+            return this.buildCommandErrorResult({ code: PLAYER_STATE_CODE.NOT_FOUND, gameState });
         }
 
         if (blindType !== "small" && blindType !== "big") {
-            return this.buildActionResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, action });
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.INVALID_ACTION, gameState });
         }
 
         if (!this.activeTags[playerId]) this.activeTags[playerId] = [];
@@ -339,53 +349,187 @@ export class GameService {
             });
         }
 
-        const nextProgress = this.getNextBlindProgress(gameState);
-
-        // const progress: Progress = {
-        //     gameOver: false,
-        //     blindOver: true,
-        //     currentAnteConfig: blindState.currentAnteConfig,
-        //     nextBlindConfig: nextProgress.nextBlindConfig,
-        // };
-
-        const playerState: PlayerStateResponse = {
-            hand: playerStates.hand,
-            playsLeft: playerStates.playsLeft,
-            discardsLeft: playerStates.discardsLeft,
-            remainingDeckCount: playerStates.deck.length,
-            money: playerStates.money,
-            currentBlindScore: blindState.currentBlindScore,
-            currentActionScore: playerStates.currentActionScore,
-            gameStatus: gameState.gameStatus,
-            targetScore: blindState.targetScore,
-        };
+        const nextProgress = this.getNextBlindTransition(gameState);
 
         this.advanceToNextBlind(gameState, nextProgress);
+        gameState.gameStatus = GameStatus.INITIALIZED;
+        console.log(`gameState.gameStatus: ${gameState.gameStatus}`);
+        return {
+            code: RESULT_CODE.SUCCESS,
+            message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
+            events: [
+                {
+                    type: GameSocketEvents.BlindSkipped,
+                    payload: {
+                        blindType,
+                        tagCode,
+                    },
+                },
+                {
+                    type: GameSocketEvents.BlindPrepared,
+                    payload: this.buildBlindPreparedPayload(gameState),
+                },
+            ],
+            state: this.buildGameStateResponse(gameState),
+        };
+    }
+
+    /**
+     * Buys one item from the current shop.
+     *
+     * Current stage only supports virtual Joker items.
+     * Buying a Joker only records ownership in playerState.jokers.
+     * Joker scoring effects are intentionally not handled here.
+     */
+    public buyShopItem(playerId: string, instanceId: string): GameCommandResult {
+        const gameState = this.gameStates[playerId];
+
+        if (!gameState) {
+            return this.buildCommandErrorResult({ code: PLAYER_STATE_CODE.NOT_FOUND });
+        }
+
+        if (gameState.gameStatus !== GameStatus.SHOPPING) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SHOP, gameState });
+        }
+
+        if (!gameState.shopState) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.SHOP_STATE_NOT_FOUND, gameState });
+        }
+
+        if (!instanceId) {
+            return this.buildCommandErrorResult({ code: REQUEST_PARAM_CODE.PARAM_ERROR, gameState });
+        }
+
+        const shopItem = gameState.shopState.items.find((item) => item.instanceId === instanceId);
+
+        if (!shopItem) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.SHOP_ITEM_NOT_FOUND, gameState });
+        }
+
+        if (shopItem.purchased) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.SHOP_ITEM_ALREADY_PURCHASED, gameState });
+        }
+
+        if (gameState.playerState.money < shopItem.price) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.NOT_ENOUGH_MONEY, gameState });
+        }
+
+        gameState.playerState.money -= shopItem.price;
+        shopItem.purchased = true;
+
+        // Current stage only records owned Jokers.
+        // Runtime effect state will be added when Joker effects are implemented.
+        gameState.playerState.jokers.push({
+            instanceId: shopItem.instanceId,
+            configId: shopItem.configId,
+            name: shopItem.name,
+            description: shopItem.description,
+            runtimeState: {},
+        });
+
+        const boughtItemResponse = this.buildShopItemResponse(shopItem);
 
         return {
             code: RESULT_CODE.SUCCESS,
             message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
-            actionResult: {
-                action: action,
-            },
-            state: {
-                blindState,
-                playerState,
-                gameStatus: gameState.gameStatus,
-            },
+            events: [
+                {
+                    type: GameSocketEvents.ShopItemBought,
+                    payload: {
+                        item: boughtItemResponse,
+                        moneyAfterPurchase: gameState.playerState.money,
+                    },
+                },
+            ],
+            state: this.buildGameStateResponse(gameState),
         };
     }
 
-    public enterNextRound(playerId: string) {
+    /**
+     * Leaves the shop phase and prepares the next Blind.
+     *
+     * This method does not deal cards and does not enter PLAYING.
+     * The client should call startGame() after receiving game:blindPrepared.
+     */
+    public enterNextRound(playerId: string): GameCommandResult {
         const gameState: GameState = this.gameStates[playerId];
-        const action = "shop";
+
         if (!gameState) {
-            return this.buildActionResult({ code: PLAYER_STATE_CODE.NOT_FOUND, action });
+            return this.buildCommandErrorResult({ code: PLAYER_STATE_CODE.NOT_FOUND });
         }
 
         if (gameState.gameStatus !== GameStatus.SHOPPING) {
-            return this.buildActionResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SKIP, action });
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SHOP, gameState });
         }
+
+        gameState.shopState = undefined;
+        gameState.gameStatus = GameStatus.INITIALIZED;
+
+        return {
+            code: RESULT_CODE.SUCCESS,
+            message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
+            events: [
+                {
+                    type: GameSocketEvents.BlindPrepared,
+                    payload: this.buildBlindPreparedPayload(gameState),
+                },
+            ],
+            state: this.buildGameStateResponse(gameState),
+        };
+    }
+
+    /**
+     * Rerolls current shop items.
+     *
+     * This method:
+     * - validates SHOPPING status
+     * - charges reroll cost
+     * - replaces current shopState with newly generated items
+     *
+     * It does not affect owned Jokers.
+     */
+    public rerollShop(playerId: string): GameCommandResult {
+        const gameState = this.gameStates[playerId];
+
+        if (!gameState) {
+            return this.buildCommandErrorResult({ code: PLAYER_STATE_CODE.NOT_FOUND });
+        }
+
+        if (gameState.gameStatus !== GameStatus.SHOPPING) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.INVALID_GAME_STATUS_FOR_SHOP, gameState });
+        }
+
+        if (!gameState.shopState) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.SHOP_STATE_NOT_FOUND, gameState });
+        }
+
+        const rerollCost = gameState.shopState.rerollCost;
+
+        if (gameState.playerState.money < rerollCost) {
+            return this.buildCommandErrorResult({ code: GAME_STATE_CODE.NOT_ENOUGH_MONEY, gameState });
+        }
+
+        gameState.playerState.money -= rerollCost;
+
+        gameState.shopState = this.createShopState();
+
+        const shopStateResponse = this.buildShopStateResponse(gameState);
+
+        return {
+            code: RESULT_CODE.SUCCESS,
+            message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
+            events: [
+                {
+                    type: GameSocketEvents.ShopRerolled,
+                    payload: {
+                        cost: rerollCost,
+                        shopState: shopStateResponse,
+                        moneyAfterReroll: gameState.playerState.money,
+                    },
+                },
+            ],
+            state: this.buildGameStateResponse(gameState),
+        };
     }
 
     /**
@@ -412,10 +556,6 @@ export class GameService {
         const { code, action, selectedCards, gameState, cardType, validCards, baseScore, multiplier } = param;
         // this.logger.log(`buildActionResult : ${JSON.stringify(param)}`);
 
-        if (code != RESULT_CODE.SUCCESS) {
-            return { code, message: CODE_DESCRIPTION[code], actionResult: { action } };
-        }
-
         if (
             !gameState ||
             selectedCards === undefined ||
@@ -428,6 +568,7 @@ export class GameService {
                 code: REQUEST_PARAM_CODE.PARAM_ERROR,
                 message: CODE_DESCRIPTION[REQUEST_PARAM_CODE.PARAM_ERROR],
                 actionResult: { action },
+                events: [],
             };
         }
 
@@ -435,9 +576,6 @@ export class GameService {
         const blindStates: BlindState = gameState.blindState;
 
         const blindOver = this.isBlindOver(playerStates, gameState);
-        if (blindOver) gameState.gameStatus = GameStatus.FINISHED;
-
-        const ante = blindStates.currentAnteConfig.ante;
 
         const playAction: GameActionResult = {
             action,
@@ -450,47 +588,20 @@ export class GameService {
             },
         };
 
-        const blindState: BlindStateResponse = {
-            round: blindStates.round,
-            ante: ante,
-            blindType: blindStates.blindType,
-            targetScore: blindStates.targetScore,
-            currentBlindScore: blindStates.currentBlindScore,
-        };
-
-        const progress: Progress = {
-            gameOver: false,
-            blindOver: blindOver,
-            currentAnteConfig: blindStates.currentAnteConfig,
-        };
-
+        const events: GameEvent[] = [];
         if (blindOver) {
-            this.resolveProgressAfterBlind(gameState, blindStates, progress);
+            events.push(...this.resolveBlindOver(gameState, blindStates));
         }
 
-        const playerState: PlayerStateResponse = {
-            hand: playerStates.hand,
-            playsLeft: playerStates.playsLeft,
-            discardsLeft: playerStates.discardsLeft,
-            remainingDeckCount: playerStates.deck.length,
-            money: playerStates.money,
-            currentBlindScore: blindStates.currentBlindScore,
-            currentActionScore: playerStates.currentActionScore,
-            gameStatus: gameState.gameStatus,
-            targetScore: blindStates.targetScore,
-        };
+        const state: GameStateResponse = this.buildGameStateResponse(gameState);
 
         const gameCommand: GameCommandResult = {
             code,
             message: CODE_DESCRIPTION[code],
             actionResult: playAction,
-            state: {
-                playerState,
-                blindState,
-                gameStatus: gameState.gameStatus,
-            },
+            events,
+            state,
         };
-
         return gameCommand;
     }
 
@@ -529,6 +640,7 @@ export class GameService {
                 handSize: GAME_RULE.DEFAULT_HAND_SIZE,
                 currentActionScore: 0,
                 money: ECONOMY_RULE.INITIAL_MONEY,
+                jokers: [],
             },
             blindState: {
                 round: 1,
@@ -547,12 +659,13 @@ export class GameService {
     /**
      * Builds the next Blind preview information.
      *
-     * This method only prepares frontend display data.
-     * It does not update the actual gameState.
+     * This method only calculates where the game should move next.
+     * It does not mutate gameState.
      *
-     * Real Blind progression is handled separately by advanceToNextBlind().
+     * For boss Blind completion, it may also prepare nextAnteConfig.
+     * The actual state mutation is handled by advanceToNextBlind().
      */
-    private getNextBlindProgress(gameState: GameState): {
+    private getNextBlindTransition(gameState: GameState): {
         nextBlindConfig: NextBlindConfig;
         nextAnteConfig?: AnteConfig;
     } {
@@ -584,6 +697,16 @@ export class GameService {
         }
 
         const nextAnte = Math.floor(blindState.round / 3) + 1;
+
+        if (nextAnte > TOTAL_ANTE_COUNT) {
+            return {
+                nextBlindConfig: {
+                    ante: nextAnte,
+                    blindType: "small",
+                    score: 0,
+                },
+            };
+        }
         const nextAnteConfig = this.getAnteConfig(gameState.playerId, nextAnte);
 
         return {
@@ -596,6 +719,9 @@ export class GameService {
         };
     }
 
+    /**
+     * A Blind is over when the target score is reached or no plays remain.
+     */
     private isBlindOver(playerState: PlayerState, gameState: GameState): boolean {
         return playerState.playsLeft <= 0 || gameState.blindState.currentBlindScore >= gameState.blindState.targetScore;
     }
@@ -682,8 +808,8 @@ export class GameService {
      * - blind type
      * - target score
      * - current ante config
-     *
-     * After progression, the game returns to the "initialized" state and waits for startGame().
+     * It does not change gameStatus.
+     * The caller decides whether the next phase is SHOPPING or INITIALIZED.
      */
     private advanceToNextBlind(
         gameState: GameState,
@@ -699,7 +825,6 @@ export class GameService {
         gameState.blindState.blindType = nextBlindConfig.blindType;
         gameState.blindState.targetScore = nextBlindConfig.score;
         gameState.blindState.currentBlindScore = 0;
-        gameState.gameStatus = GameStatus.SHOPPING;
 
         if (nextProgress.nextAnteConfig) {
             gameState.blindState.currentAnteConfig = nextProgress.nextAnteConfig;
@@ -729,40 +854,86 @@ export class GameService {
     }
 
     /**
-     * Resolves the game progress after a blind ends.
-     * Updates settlement info, advances to the next blind if needed, or clears runtime state on game over.
+     * Resolves all side effects after a Blind is over.
+     *
+     * Responsibilities:
+     * - emit game:blindOver for the completed Blind
+     * - finish the run when the player loses
+     * - finish the run when the final Boss is cleared
+     * - settle reward money on win
+     * - advance internal Blind state
+     * - enter SHOPPING phase and create shopState
+     *
+     * Important:
+     * game:blindOver uses the completed Blind state.
+     * game:stateChanged is built later and represents the final state after this method mutates gameState.
      */
-    private resolveProgressAfterBlind(gameState: GameState, blindStates: BlindState, progress: Progress): void {
+    private resolveBlindOver(gameState: GameState, blindStates: BlindState): GameEvent[] {
+        const events: GameEvent[] = [];
         const result = blindStates.currentBlindScore >= blindStates.targetScore ? "win" : "lose";
 
-        progress.settlement = {
-            finalScore: blindStates.currentBlindScore,
-            targetScore: blindStates.targetScore,
-            result: result,
-        };
+        const completedBlindState = this.buildBlindStateResponse(gameState);
+        events.push({
+            type: GameSocketEvents.BlindOver,
+            payload: {
+                result,
+                blindState: completedBlindState,
+            },
+        });
 
         if (result === "lose") {
-            progress.gameOver = true;
+            gameState.gameStatus = GameStatus.FINISHED;
+
+            events.push({
+                type: GameSocketEvents.GameOver,
+                payload: {
+                    reason: "blind_failed",
+                },
+            });
 
             this.clearPlayerRuntimeState(gameState.playerId);
+            return events;
 
             // this.logger.log(
             //     `Player ${gameState.playerId} lost the blind. Game over. Final score: ${blindStates.currentBlindScore}, Target score: ${blindStates.targetScore}`,
             // );
         } else {
-            const nextProgress = this.getNextBlindProgress(gameState);
+            const nextProgress = this.getNextBlindTransition(gameState);
 
-            progress.nextBlindConfig = nextProgress.nextBlindConfig;
+            if (nextProgress.nextBlindConfig.ante > TOTAL_ANTE_COUNT) {
+                gameState.gameStatus = GameStatus.FINISHED;
 
-            if (nextProgress.nextAnteConfig) {
-                progress.nextAnteConfig = nextProgress.nextAnteConfig;
+                events.push({
+                    type: GameSocketEvents.GameOver,
+                    payload: {
+                        reason: "run_completed",
+                    },
+                });
+                this.clearPlayerRuntimeState(gameState.playerId);
+                return events;
             }
+
             const awardMoney: RewardMoneyDetail = this.calculateBlindRewardDetail(blindStates, gameState.playerState);
-            progress.settlement.reward = awardMoney;
 
             this.applyRewardMoney(gameState, awardMoney.currentBlindRewardMoney);
             this.advanceToNextBlind(gameState, nextProgress);
+
+            gameState.gameStatus = GameStatus.SHOPPING;
+            gameState.shopState = this.createShopState();
+
             this.cleanupExpiredTags(gameState.playerId);
+
+            events.push({
+                type: GameSocketEvents.RewardSettled,
+                payload: awardMoney,
+            });
+
+            events.push({
+                type: GameSocketEvents.ShopEntered,
+                payload: this.buildShopStateResponse(gameState),
+            });
+
+            return events;
         }
     }
 
@@ -795,6 +966,163 @@ export class GameService {
             interestMoney: interestMoney,
             currentBlindRewardMoney: currentBlindRewardMoney,
             moneyAfterReward: playerState.money + currentBlindRewardMoney,
+        };
+    }
+
+    /**
+     * Builds the latest state snapshot exposed to the client.
+     *
+     * This response is a snapshot, not a progress description.
+     * Process details such as reward settlement, blind completion,
+     * and blind preparation are emitted as separate domain events.
+     */
+    private buildGameStateResponse(gameState: GameState): GameStateResponse {
+        const playerState = gameState.playerState;
+        const blindState = gameState.blindState;
+
+        return {
+            playerState: {
+                hand: playerState.hand,
+                playsLeft: playerState.playsLeft,
+                discardsLeft: playerState.discardsLeft,
+                remainingDeckCount: playerState.deck.length,
+                money: playerState.money,
+                currentBlindScore: blindState.currentBlindScore,
+                currentActionScore: playerState.currentActionScore,
+                gameStatus: gameState.gameStatus,
+                targetScore: blindState.targetScore,
+
+                // Current stage return players jokers directly.
+                // Joker response DTO and runtime effect stage will be refined when Joker effects are implemented.
+                jokers: playerState.jokers,
+            },
+            blindState: {
+                round: blindState.round,
+                ante: blindState.ante,
+                blindType: blindState.blindType,
+                targetScore: blindState.targetScore,
+                currentBlindScore: blindState.currentBlindScore,
+            },
+
+            shopState:
+                gameState.gameStatus === GameStatus.SHOPPING ? this.buildShopStateResponse(gameState) : undefined,
+
+            gameStatus: gameState.gameStatus,
+        };
+    }
+
+    /**
+     * Creates a new shop state from static shop item configs.
+     *
+     * Each shop item gets a runtime instanceId so the client can buy
+     * a concrete item from the current shop, not just a static config.
+     */
+    private createShopState(): ShopState {
+        const shuffledConfigs = this.shuffleConfig([...SHOP_ITEM_CONFIG]);
+        const selectedConfigs = shuffledConfigs.slice(0, SHOP_RULE.SHOP_ITEM_COUNT);
+
+        const items: ShopItem[] = selectedConfigs.map((config) => {
+            return {
+                instanceId: this.createShopItemInstanceId(),
+                configId: config.configId,
+                name: config.name,
+                type: config.type,
+                price: config.basePrice,
+                description: config.description,
+                effectType: config.effectType,
+                purchased: false,
+            };
+        });
+
+        return {
+            items,
+            rerollCost: SHOP_RULE.DEFAULT_REROLL_COST,
+        };
+    }
+
+    private buildShopStateResponse(gameState: GameState): ShopStateResponse {
+        const shopState = gameState.shopState;
+
+        if (!shopState) {
+            return {
+                items: [],
+                rerollCost: SHOP_RULE.DEFAULT_REROLL_COST,
+            };
+        }
+
+        return {
+            items: shopState.items.map((item) => this.buildShopItemResponse(item)),
+            rerollCost: shopState.rerollCost,
+        };
+    }
+
+    private buildShopItemResponse(item: ShopItem): ShopItemResponse {
+        return {
+            instanceId: item.instanceId,
+            configId: item.configId,
+            name: item.name,
+            type: item.type,
+            price: item.price,
+            description: item.description,
+            purchased: item.purchased,
+        };
+    }
+
+    private buildBlindStateResponse(gameState: GameState): BlindStateResponse {
+        const blindState = gameState.blindState;
+
+        return {
+            round: blindState.round,
+            ante: blindState.ante,
+            blindType: blindState.blindType,
+            targetScore: blindState.targetScore,
+            currentBlindScore: blindState.currentBlindScore,
+        };
+    }
+
+    /**
+     * Builds the payload used by game:blindPrepared.
+     *
+     * This event is used by the client to render the Ante / Blind preparation page.
+     * For boss completion, currentAnteConfig has already been updated by advanceToNextBlind().
+     */
+    private buildBlindPreparedPayload(gameState: GameState): BlindPreparedPayload {
+        return {
+            blindState: this.buildBlindStateResponse(gameState),
+            anteConfig: gameState.blindState.currentAnteConfig,
+        };
+    }
+
+    /**
+     * Generates a runtime id for a concrete shop item instance.
+     */
+    private createShopItemInstanceId(): string {
+        return `shop_item_${this.shopItemInstanceIdCounter++}`;
+    }
+
+    /**
+     * Builds a generic command error result for non-card actions.
+     *
+     * Unlike buildActionResult(), this does not emit game:actionResult.
+     * It is used by commands such as skipBlind, buyShopItem, rerollShop,
+     * and enterNextRound.
+     */
+    private buildCommandErrorResult(param: { code: number; gameState?: GameState }): GameCommandResult {
+        const { code, gameState } = param;
+
+        return {
+            code,
+            message: CODE_DESCRIPTION[code],
+            events: [
+                {
+                    type: GameSocketEvents.GameError,
+                    payload: {
+                        code,
+                        message: CODE_DESCRIPTION[code],
+                    },
+                },
+            ],
+            state: gameState ? this.buildGameStateResponse(gameState) : undefined,
         };
     }
 

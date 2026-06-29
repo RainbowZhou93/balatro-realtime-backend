@@ -3,9 +3,10 @@ import { BlindType } from "../blind.config";
 import { TagCode } from "../tag.config";
 import { GameStatus } from "../constants";
 import { RewardMoneyDetail } from "./game-economy.types";
+import { ShopState } from "./shop.types";
 
 export type SkippableBlindType = "small" | "big";
-export type ActionType = "play" | "discard" | "skipBlind" | "shop";
+export type ActionType = "play" | "discard";
 export type PlayResult = "win" | "lose";
 
 export type GameState = {
@@ -13,16 +14,22 @@ export type GameState = {
     playerState: PlayerState;
     blindState: BlindState;
     gameStatus: GameStatus;
+    shopState?: ShopState;
 };
 
 export type PlayerState = {
     deck: Card[];
     hand: string[];
+
     playsLeft: number;
     discardsLeft: number;
+
     handSize: number;
     currentActionScore: number;
+
     money: number;
+
+    jokers: PlayerJoker[];
 };
 
 export type BlindState = {
@@ -88,4 +95,10 @@ export type Progress = {
     nextBlindConfig?: NextBlindConfig;
 };
 
-
+export type PlayerJoker = {
+    instanceId: string;
+    configId: number;
+    name: string;
+    description: string;
+    runtimeState: Record<string, number | string | boolean>;
+};

@@ -8,5 +8,5 @@ export const BLIND_REWARD_RULE = {
 
 export const INTEREST_RULE = {
     MONEY_PER_INTEREST: 5,
-    MAX_INTEREST: 5
+    MAX_INTEREST: 5,
 } as const;

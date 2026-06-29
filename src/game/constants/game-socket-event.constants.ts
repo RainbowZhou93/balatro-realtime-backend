@@ -1,12 +1,18 @@
+/**
+ * Server-to-client WebSocket event names.
+ *
+ * Client command names such as initGame or selectCards are handled by Gateway.
+ * These events are emitted by the server.
+ */
 export const GameSocketEvents = {
-    Error: "game:error",
+    GameError: "game:error",
 
-    InitGame: "game:initialized",
-    StartGame: "game:started",
-
-    SkipBlind: "game:blindSkipped",
+    BlindPrepared: "game:blindPrepared",
+    GameInitialized: "game:initialized",
+    GameStarted: "game:started",
 
     ActionResult: "game:actionResult",
+    BlindSkipped: "game:blindSkipped",
     BlindOver: "game:blindOver",
     RewardSettled: "game:rewardSettled",
     ShopEntered: "game:shopEntered",
@@ -14,7 +20,7 @@ export const GameSocketEvents = {
 
     ShopItemBought: "game:shopItemBought",
     ShopRerolled: "game:shopRerolled",
-    RoundStarted: "game:roundStarted",
+
     StateChanged: "game:stateChanged",
 } as const;
 

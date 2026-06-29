@@ -1,3 +1,6 @@
+/**
+ * Basic runtime rule constants for a single run.
+ */
 export const GAME_RULE = {
     MAX_SELECT_CARDS: 5,
     INITIAL_PLAYS_LEFT: 5,
