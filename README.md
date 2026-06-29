@@ -4,20 +4,27 @@
 
 Current focus:
 
-- Reward settlement and money state design
-- Economy system foundation
-- Shop / reward / build-growth lifecycle
-- Stateful game lifecycle evolution
-- Realtime game state management
+* Shop phase lifecycle
+* Shop item generation and purchase flow
+* Shop reroll and next Blind preparation
+* Reward-to-shop game loop
+* Stateful game lifecycle evolution
+* Realtime game state synchronization
 
 Completed recently:
 
-- Blind / stage progression system
-- Boss Blind mechanics
-- Skip Blind and Tag reward system
-- Blind reward settlement
-- Player money state
-- Basic economy rule configuration
+* Blind / stage progression system
+* Boss Blind mechanics
+* Skip Blind and Tag reward system
+* Blind reward settlement
+* Player money state
+* Basic economy rule configuration
+* Shop entry after Blind win
+* Basic shop item generation
+* Shop item purchase flow
+* Shop reroll flow
+* Enter next Blind preparation from shop
+* WebSocket API contract documentation
 
 ---
 
@@ -33,77 +40,130 @@ This project is inspired by Balatro, but focuses primarily on backend architectu
 
 The goal is to gradually implement core backend capabilities through a complete card game server, including:
 
-- state management
-- reward settlement
-- economy system design
-- cache layering
-- persistence
-- recovery
-- testing
-- extensibility
+* state management
+* reward settlement
+* economy system design
+* cache layering
+* persistence
+* recovery
+* testing
+* extensibility
 
 本项目用于从 0 到 1 实现一个 Balatro 风格的游戏后端，并逐步进行工程化改造。
 
 项目不仅仅是算法练习，也不是简单的游戏复刻，而是希望通过完整实现一个卡牌游戏后端，逐步实践后端工程中常见的核心能力，例如：
 
-- 状态机设计
-- WebSocket 实时通信
-- Blind 生命周期管理
-- 奖励结算与经济系统
-- Redis 缓存分层
-- MySQL 持久化
-- 游戏状态恢复
-- Docker 部署
-- 单元测试
-- 可扩展的规则系统
+* 状态机设计
+* WebSocket 实时通信
+* Blind 生命周期管理
+* 奖励结算与经济系统
+* Redis 缓存分层
+* MySQL 持久化
+* 游戏状态恢复
+* Docker 部署
+* 单元测试
+* 可扩展的规则系统
 
 ---
 
 ## Tech Stack
 
-- Node.js v22
-- TypeScript 5.x
-- NestJS
-- WebSocket
-- Jest
-- GitHub Actions
-- Redis (planned)
-- MySQL (planned)
-- Docker / Docker Compose (planned)
+| Area                   | Tech                            |
+| ---------------------- | ------------------------------- |
+| Runtime                | Node.js v22                     |
+| Language               | TypeScript 5.x                  |
+| Framework              | NestJS                          |
+| Realtime Communication | Native WebSocket                |
+| Testing                | Jest                            |
+| CI                     | GitHub Actions                  |
+| Cache                  | Redis planned                   |
+| Database               | MySQL planned                   |
+| Deployment             | Docker / Docker Compose planned |
 
 ---
 
 ## Backend Architecture
 
-Current structure:
+### Current modules
 
-- WebSocket Gateway (entry point)
-- Game Service (orchestration layer)
-- Poker Service (card rules and scoring logic)
-- State-driven game lifecycle management
-- In-memory per-player runtime state
-- Player state management
-- Blind / Ante / Round state management
-- Blind score and reward configuration
-- Basic Blind progression and settlement flow
-- Skip Blind decision flow
-- Tag preview assignment and runtime tag handling
-- Reward settlement and money state update
-- Basic economy rule configuration
+* WebSocket Gateway (entry point)
+* Game Service (game lifecycle orchestration)
+* Poker Service (card rules and scoring logic)
+* State-driven game lifecycle management
+* In-memory per-player runtime state
+* Player state management
+* Blind / Ante / Round state management
+* Blind score and reward configuration
+* Boss Blind rule handling
+* Skip Blind decision flow
+* Tag preview assignment and runtime tag handling
+* Reward settlement and money state update
+* Basic economy rule configuration
+* Shop phase state management
+* Shop item generation
+* Shop item purchase and reroll flow
+* Player-owned Joker placeholder state
+* WebSocket domain events and final state snapshot response
 
-Current state structure:
+### Current lifecycle
 
+```mermaid
+flowchart LR
+    A["initGame"] --> B["game:initialized"]
+    B --> C["startGame"]
+    C --> D["game:started"]
+    D --> E["selectCards"]
+
+    E --> F{"Blind result"}
+
+    F -->|Win| G["game:blindOver"]
+    G --> H["game:rewardSettled"]
+    H --> I["game:shopEntered"]
+    I --> J["game:stateChanged<br/>status = shopping"]
+
+    J --> K["buyShopItem"]
+    J --> L["rerollShop"]
+
+    K --> M["game:shopItemBought"]
+    L --> N["game:shopRerolled"]
+
+    M --> O["game:stateChanged"]
+    N --> O
+
+    O --> P["enterNextRound"]
+    P --> Q["game:blindPrepared"]
+    Q --> R["game:stateChanged<br/>status = initialized"]
+    R --> C
+
+    F -->|Lose| S["game:blindOver"]
+    S --> T["game:gameOver"]
+    T --> U["game:stateChanged<br/>status = finished"]
 ```
+
+### State responsibility
+
+| State Part    | Responsibility                                                  |
+| ------------- | --------------------------------------------------------------- |
+| `playerState` | Player hand, deck, play / discard count, money and owned Jokers |
+| `blindState`  | Current Blind / Ante / score target / current Blind score       |
+| `shopState`   | Current shop items and reroll cost                              |
+| `gameStatus`  | Current lifecycle status                                        |
+
+### Current state structure
+
+```text
 - GameState
   - playerId
 
   - playerState
-    - hand
     - deck
-    - plays/discards
-    - hand size
+    - hand
+    - playsLeft
+    - discardsLeft
+    - handSize
     - currentActionScore
     - money
+    - jokers
 
   - blindState
     - round
@@ -112,86 +172,119 @@ Current state structure:
     - targetScore
     - currentBlindScore
     - currentAnteConfig
-    - nextAnteConfig?
+
+  - shopState?
+    - items
+      - instanceId
+      - configId
+      - name
+      - type
+      - price
+      - description
+      - purchased
+    - rerollCost
 
   - gameStatus
-
-  - progress / settlement response
-    - finalScore
-    - targetScore
-    - result
-    - reward?
-      - baseMoney
-      - remainingHandBonusMoney
-      - interestMoney
-      - currentBlindRewardMoney
-      - moneyAfterReward
+    - initialized
+    - playing
+    - shopping
+    - finished
 ```
 
-Future improvements:
+### Current WebSocket response model
 
-- Shop entry and shop lifecycle
-- Buy / skip / reroll flow
-- Joker and modifier system
-- Voucher / Tag / Joker economy interaction
-- Redis for state persistence
-- MySQL for long-term storage
-- Distributed session handling
-- Expand Boss Blind and effect coverage
-- Expand Tag types and effect coverage
+```text
+- actionResult
+  - only used for play / discard result
 
-The system is evolving from a single-game lifecycle into a staged game engine with Blind-based progression, reward settlement, and build-growth loops.
+- events
+  - game:blindOver
+  - game:rewardSettled
+  - game:shopEntered
+  - game:shopItemBought
+  - game:shopRerolled
+  - game:blindPrepared
+  - game:gameOver
+  - game:error
+
+- state
+  - latest GameStateResponse snapshot
+```
+
+The backend separates domain events from the final state snapshot.
+
+For example, after winning a Blind:
+
+```text
+game:blindOver      -> completed Blind
+game:rewardSettled  -> reward result
+game:shopEntered    -> generated shop state
+game:stateChanged   -> latest final state, usually shopping
+```
+
+### Future improvements
+
+* Real Joker effect system
+* Joker scoring pipeline
+* Modifier / effect execution system
+* Voucher / Tag / Joker economy interaction
+* More representative Boss Blind effects
+* More representative Tag effects
+* Tarot / Planet / Spectral card prototypes
+* Redis for runtime state persistence
+* MySQL for long-term storage
+* Reconnect and state recovery
+* Distributed session handling
+* Frontend visualization
+
+The system is evolving from a single-game lifecycle into a staged game engine with Blind-based progression, reward settlement, shop phase, and build-growth loops.
 
 ---
 
 ## Project Goals
 
-- Implement a realtime game backend
-- Practice backend architecture design
-- Build a state-driven game engine
-- Support reward settlement and economy growth
-- Support cache + persistence layering
-- Support recovery after restart
-- Keep the project extensible
-- Record the whole process as a blog series
+* Implement a realtime game backend
+* Practice backend architecture design
+* Build a state-driven game engine
+* Support reward settlement and economy growth
+* Support cache + persistence layering
+* Support recovery after restart
+* Keep the project extensible
+* Record the whole process as a blog series
 
 ---
 
 ## Roadmap
 
-- Phase 1: Single game flow
-- Phase 2: Blind / stage system
-- Phase 3: Reward, shop and build-growth system
-- Phase 4: Persistence and cache
-- Phase 5: Engineering and deployment
-- Phase 6: Effect / modifier system
-- Phase 7: Special cards
-- Phase 8: AI / Go / extension
+| Phase   | Topic                                | Status      |
+| ------- | ------------------------------------ | ----------- |
+| Phase 1 | Single game flow                     | Done        |
+| Phase 2 | Blind / stage system                 | Done        |
+| Phase 3 | Reward, shop and build-growth system | In progress |
+| Phase 4 | Joker / modifier / effect system     | Planned     |
+| Phase 5 | Persistence and cache                | Planned     |
+| Phase 6 | Engineering and deployment           | Planned     |
+| Phase 7 | Special cards                        | Planned     |
+| Phase 8 | AI / Go / extension                  | Planned     |
 
 ---
 
 ## Current Features
 
-- WebSocket realtime game flow
-- Server-side deck state management
-- Hand evaluation system
-- Play / discard / draw mechanics
-- Scoring calculation
-- Round settlement
-- Game lifecycle management
-- Blind progression system
-- Blind win / lose settlement
-- Stateful runtime management
-- Unit testing with Jest
-- CI automation with GitHub Actions
-- Skip Blind action flow
-- Tag reward preview and assignment
-- Basic Tag effect handling (Boss Tag, Juggle Tag)
-- Blind reward settlement
-- Player money state
-- Reward detail response
-- Basic interest calculation
-- Basic economy rule configuration
+| Area             | Features                                                                    |
+| ---------------- | --------------------------------------------------------------------------- |
+| WebSocket        | Native WebSocket gateway, command-based message handling, server event push |
+| Poker Logic      | Hand evaluation, valid card detection, score calculation                    |
+| Player State     | Server-side hand, deck, play / discard count, money, owned Jokers           |
+| Blind System     | Ante / round / blindType state, target score, current Blind score           |
+| Boss Blind       | Representative Boss Blind rule handling                                     |
+| Skip Blind / Tag | Skip flow, Tag reward preview, basic runtime Tag effects                    |
+| Economy          | Blind reward, remaining hand bonus, interest calculation, money update      |
+| Shop             | Shop entry, item generation, buy item, reroll shop, enter next Blind        |
+| Events           | Domain events + final `game:stateChanged` snapshot                          |
+| Testing          | Jest unit tests and integration-like tests                                  |
+| CI               | GitHub Actions automation                                                   |
+| Documentation    | WebSocket API contract document                                             |
 
 ---
 
@@ -209,10 +302,10 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 ✔ Implement card dealing logic  
 ✔ Introduce server-side deck state management  
 ✔ Implement play / discard / draw flow   
-✔ Add scoring calculation 
-✔ Add round settlement logic 
-✔ Add game over state management   
-✔ Refactor and extend unit tests   
+✔ Add scoring calculation    
+✔ Add round settlement logic    
+✔ Add game over state management      
+✔ Refactor and extend unit tests      
 
 ### Phase 2 - Blind / stage system
 
@@ -228,34 +321,55 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 ✔ Add Skip Blind action handling   
 ✔ Add Tag reward preview to Blind state  
 ✔ Implement basic Tag runtime handling   
-✔ Support representative Tag effects (Boss Tag, Juggle Tag)   
+✔ Support representative Tag effects (Boss Tag, Juggle Tag)
 
 ### Phase 3 - Reward, shop and build-growth system
 
 🚧 In progress
 
-✔ Add player money state  
-✔ Add Blind base reward money configuration 
-✔ Add economy rule configuration   
-✔ Add reward detail structure   
-✔ Add Blind reward settlement flow 
-✔ Add remaining hand bonus reward  
-✔ Add interest reward calculation  
-✔ Update player money after Blind win 
+| Module                   |    Status | Description                                |
+| ------------------------ | --------: | ------------------------------------------ |
+| Money State              |    ✔ Done | Add player money state                     |
+| Blind Reward Config      |    ✔ Done | Add base reward money configuration        |
+| Economy Rules            |    ✔ Done | Add reward and interest rule configuration |
+| Reward Detail            |    ✔ Done | Add reward detail response structure       |
+| Blind Reward Settlement  |    ✔ Done | Settle reward after Blind win              |
+| Remaining Play Bonus     |    ✔ Done | Add bonus money from remaining plays       |
+| Interest Reward          |    ✔ Done | Add basic interest calculation             |
+| Money Update             |    ✔ Done | Update player money after Blind win        |
+| Shop Entry               |    ✔ Done | Enter shop after Blind win                 |
+| Shop State               |    ✔ Done | Add basic shop state structure             |
+| Placeholder Joker Items  |    ✔ Done | Generate virtual Joker shop items          |
+| Buy Shop Item            |    ✔ Done | Buy shop item and mark item as purchased   |
+| Player-owned Joker State |    ✔ Done | Store bought Joker in player state         |
+| Reroll Shop              |    ✔ Done | Spend money to refresh shop items          |
+| Next Blind Preparation   |    ✔ Done | Leave shop and emit `game:blindPrepared`   |
+| WebSocket API Contract   |    ✔ Done | Add detailed WebSocket API document        |
+| Real Joker Effects       | ⏳ Planned | Add representative Joker scoring effects   |
+| Modifier Pipeline        | ⏳ Planned | Add unified effect execution pipeline      |
 
 Planned next:
 
-- Shop entry flow 
-- Shop buy / skip / reroll actions  
-- Shop item generation  
-- Joker / Tag / Voucher economy interaction  
-- Build-growth lifecycle after Blind settlement 
+* Refine shop item response and player Joker response boundaries
+* Add representative Joker effects
+* Design Joker effect trigger timing
+* Introduce basic modifier / effect execution pipeline
+* Expand Tag / Joker / economy interaction
+* Prepare persistence boundary for runtime game state
 
 ---
 
 ## How to Run
 
-### 1. Run the server
+### 1. WebSocket API
+
+The backend uses native WebSocket for real-time game communication.
+
+For detailed client commands, server events, and payload structures, see:
+
+* [Game WebSocket Contract / 游戏 WebSocket 通信协议](./docs/websocket-api.md)
+
+### 2. Run the server
 
 ```bash
 npm install
@@ -270,7 +384,7 @@ npm run start:dev
 npm run start:prod
 ```
 
-### 2. Test with Postman
+### 3. Test with Postman
 
 Connect to:
 
@@ -278,7 +392,7 @@ Connect to:
 ws://localhost:8088
 ```
 
-### initGame
+#### initGame
 
 ```json
 {
@@ -287,7 +401,7 @@ ws://localhost:8088
 }
 ```
 
-### startGame
+#### startGame
 
 ```json
 {
@@ -296,7 +410,7 @@ ws://localhost:8088
 }
 ```
 
-### selectCards
+#### selectCards
 
 ```json
 {
@@ -308,8 +422,7 @@ ws://localhost:8088
 }
 ```
 
-
-### skipBlind
+#### skipBlind
 
 ```json
 {
@@ -321,7 +434,38 @@ ws://localhost:8088
 }
 ```
 
-### 3. Run tests
+#### buyShopItem
+
+The `instanceId` should be taken from `shopState.items`.
+
+```json
+{
+  "event": "buyShopItem",
+  "data": {
+    "instanceId": "shop_item_1"
+  }
+}
+```
+
+#### rerollShop
+
+```json
+{
+  "event": "rerollShop",
+  "data": {}
+}
+```
+
+#### enterNextRound
+
+```json
+{
+  "event": "enterNextRound",
+  "data": {}
+}
+```
+
+### 4. Run tests
 
 ```bash
 npm test
@@ -340,6 +484,7 @@ Each article corresponds to a specific implementation stage and commit history.
 ---
 
 ### Released Articles
+
 🔗 Full Blog Series -> [CSDN](https://blog.csdn.net/weixin_43239068/category_13163951.html)
 
 #### Core Series
@@ -347,47 +492,46 @@ Each article corresponds to a specific implementation stage and commit history.
 1. Project Planning and Hand Evaluation.  
    从0到1实现 Balatro 游戏后端（1）：项目规划与牌型判断实现
 
-2. NestJS Setup and Project Structure Design  
+2. NestJS Setup and Project Structure Design    
    从0到1实现 Balatro 游戏后端（2）：NestJS框架搭建与项目结构设计
 
-3. Shuffling, Dealing and Server-side Deck State Management  
+3. Shuffling, Dealing and Server-side Deck State Management    
    从0到1实现Balatro游戏后端（3）：洗牌、发牌与服务端牌堆状态管理
 
-4. Player Hand Operations and State Flow Design  
+4. Player Hand Operations and State Flow Design    
    从0到1实现Balatro游戏后端（4）：玩家手牌操作（出牌 / 弃牌 / 补牌）与状态流转设计
 
-5. Scoring Calculation and Single-game Settlement Flow  
+5. Scoring Calculation and Single-game Settlement Flow      
    从0到1实现Balatro游戏后端（5）：得分计算与单局结算流程实现
 
-6. Blind Stage State Design and Lifecycle Progression   
+6. Blind Stage State Design and Lifecycle Progression    
    从0到1实现Balatro游戏后端（6）：Blind关卡状态设计与回合推进实现
 
-7. Boss Blind Design and Special Rule Handling    
+7. Boss Blind Design and Special Rule Handling  
    从0到1实现Balatro游戏后端（7）：Boss Blind与特殊规则实现
 
 8. Skip Blind and Tag Reward Mechanism Design   
-   从0到1实现Balatro游戏后端（8）：跳过Blind与Tag奖励机制设计  
+   从0到1实现Balatro游戏后端（8）：跳过Blind与Tag奖励机制设计
 
 9. Blind Reward Settlement and Money State Design  
-   从0到1实现Balatro游戏后端（9）：Blind奖励结算与金币状态设计 
-
-
+   从0到1实现Balatro游戏后端（9）：Blind奖励结算与金币状态设计
 
 #### Advanced Topics
 
-1. Custom NestJS WebSocket Adapter for Message Interception  
+1. Custom NestJS WebSocket Adapter for Message Interception 
    Balatro后端进阶（1）：自定义NestJS WebSocket Adapter实现消息拦截
 
-2. CI Automation with GitHub Actions  
+2. CI Automation with GitHub Actions   
    Balatro后端进阶（2）：基于GitHub Actions的CI自动化验证实现
 
-3. Why Mechanism Design Makes Code Harder   
+3. Why Mechanism Design Makes Code Harder 
    Balatro后端进阶（3）：为什么机制设计比写代码更难
 
 ---
 
 ### Upcoming Articles
 
-10. Shop Entry and Economy Flow Design
+10. Shop Phase and Item Purchase Lifecycle Design  
+    从0到1实现Balatro游戏后端（10）：商店阶段与商品购买闭环实现
 
 (Updating...)
