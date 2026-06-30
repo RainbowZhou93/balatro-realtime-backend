@@ -8,7 +8,9 @@ import {
 } from "@nestjs/websockets";
 import { Logger } from "@nestjs/common";
 import { GameService } from "./game.service";
-import { SkippableBlindType } from "./game.types";
+import { SkippableBlindType } from "./types";
+import { GameSocketEvents, PLAYER_STATE_CODE } from "./constants";
+import { GameCommandResult } from "./types";
 
 type GatewayClient = WebSocket & {
     _socket?: {
@@ -49,60 +51,138 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     @SubscribeMessage("initGame")
-    handleInitGame(@MessageBody() data: object, @ConnectedSocket() client: GatewayClient): object {
+    handleInitGame(@MessageBody() _data: object, @ConnectedSocket() client: GatewayClient): void {
         const playerId = client.__clientId;
-        if (!playerId)
-            return {
-                event: "error",
-                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in initGame" },
-            };
-
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for initGame.",
+            });
+            return;
+        }
         const gameInfo = this.gameService.initGame(playerId);
-        return { event: "initGame", data: gameInfo };
+        this.sendGameEvent(client, GameSocketEvents.GameInitialized, gameInfo);
     }
 
     @SubscribeMessage("startGame")
-    handleStartGame(@MessageBody() data: object, @ConnectedSocket() client: GatewayClient): object {
+    handleStartGame(@MessageBody() _data: object, @ConnectedSocket() client: GatewayClient): void {
         const playerId = client.__clientId;
-        if (!playerId)
-            return {
-                event: "error",
-                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in startGame" },
-            };
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for startGame.",
+            });
+            return;
+        }
 
         const dealResult = this.gameService.startGame(playerId);
-        return { event: "startGame", data: dealResult };
+        this.sendGameEvent(client, GameSocketEvents.GameStarted, dealResult);
     }
 
     @SubscribeMessage("selectCards")
     handlePlayCards(
         @MessageBody() data: { selectedCards: string[]; action: "play" | "discard" },
         @ConnectedSocket() client: GatewayClient,
-    ): object {
+    ): void {
         const playerId = client.__clientId;
-        if (!playerId)
-            return {
-                event: "error",
-                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in selectCards" },
-            };
-
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for selectCards.",
+            });
+            return;
+        }
         const selectCardsResult = this.gameService.selectCards(data.selectedCards, data.action, playerId);
-        return { event: "selectCardsResult", data: selectCardsResult };
+        this.sendGameCommandResult(client, selectCardsResult);
     }
 
     @SubscribeMessage("skipBlind")
     handleSkipBlind(
         @MessageBody() data: { blindType: SkippableBlindType; round: number },
         @ConnectedSocket() client: GatewayClient,
-    ): object {
+    ): void {
         const playerId = client.__clientId;
-        if (!playerId)
-            return {
-                event: "error",
-                data: { code: "PLAYER_ID_NOT_FOUND", message: "Player id is required in skipBlind" },
-            };
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for skipBlind",
+            });
+            return;
+        }
 
         const skipBlindResult = this.gameService.skipBlind(data.blindType, data.round, playerId);
-        return { event: "skipBlindResult", data: skipBlindResult };
+        console.log(`----skipBlindResult: ${JSON.stringify(skipBlindResult)}`);
+        this.sendGameCommandResult(client, skipBlindResult);
+    }
+
+    @SubscribeMessage("buyShopItem")
+    handleBuyShopItem(@MessageBody() data: { instanceId: string }, @ConnectedSocket() client: GatewayClient): void {
+        const playerId = client.__clientId;
+
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for buyShopItem.",
+            });
+            return;
+        }
+
+        const result = this.gameService.buyShopItem(playerId, data.instanceId);
+
+        this.sendGameCommandResult(client, result);
+    }
+
+    @SubscribeMessage("rerollShop")
+    handleRerollShop(@MessageBody() _data: object, @ConnectedSocket() client: GatewayClient): void {
+        const playerId = client.__clientId;
+
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for rerollShop.",
+            });
+            return;
+        }
+
+        const result = this.gameService.rerollShop(playerId);
+
+        this.sendGameCommandResult(client, result);
+    }
+
+    @SubscribeMessage("enterNextRound")
+    handleEnterNextRound(@MessageBody() _data: object, @ConnectedSocket() client: GatewayClient): void {
+        const playerId = client.__clientId;
+
+        if (!playerId) {
+            this.sendGameEvent(client, GameSocketEvents.GameError, {
+                code: PLAYER_STATE_CODE.CLIENT_ID_NOT_FOUND,
+                message: "Player id is required for enterNextRound.",
+            });
+            return;
+        }
+
+        const result = this.gameService.enterNextRound(playerId);
+
+        this.sendGameCommandResult(client, result);
+    }
+
+    private sendGameCommandResult(client: GatewayClient, result: GameCommandResult): void {
+        if (result.actionResult) {
+            this.sendGameEvent(client, GameSocketEvents.ActionResult, result.actionResult);
+        }
+
+        for (const event of result.events ?? []) {
+            this.sendGameEvent(client, event.type, event.payload || {});
+        }
+
+        if (result.state) {
+            this.sendGameEvent(client, GameSocketEvents.StateChanged, result.state);
+        }
+    }
+
+    private sendGameEvent<T>(client: GatewayClient, event: string, data: T) {
+        this.logger.log(`-${client.__clientId}---> { event: ${event}, data: ${JSON.stringify(data)} }`);
+
+        client.send(JSON.stringify({ event, data }));
     }
 }
