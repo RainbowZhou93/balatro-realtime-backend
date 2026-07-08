@@ -52,6 +52,7 @@ import {
     GameStatus,
     GameSocketEvents,
 } from "./constants";
+import { ShopService } from "./shop.service";
 
 @Injectable()
 export class GameService {
@@ -77,7 +78,9 @@ export class GameService {
 
     private shopItemInstanceIdCounter = 1;
 
-    constructor(private readonly pokerService: PokerService) { }
+    private readonly shopService = new ShopService();
+
+    constructor(private readonly pokerService: PokerService) {}
 
     /**
      * Initializes the full game lifecycle.
@@ -160,7 +163,7 @@ export class GameService {
         playerState.currentActionScore = 0;
         blindState.currentBlindScore = 0;
 
-        playerState.deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
+        playerState.deck = shuffleArray(this.pokerService.getBaseDeck());
 
         const hand = this.pokerService.serializeCards(playerState.deck.splice(0, handSize));
         hand.sort((a, b) => {
@@ -751,7 +754,7 @@ export class GameService {
         let bossBlindAssignmentsByPlayer = this.bossBlindAssignments[playerId];
         if (!bossBlindAssignmentsByPlayer) {
             const bossBlindCodeList: BossBlindCode[] = Object.values(BOSS_BLIND_CODE);
-            bossBlindAssignmentsByPlayer = this.shuffleConfig(bossBlindCodeList);
+            bossBlindAssignmentsByPlayer = shuffleArray(bossBlindCodeList);
 
             this.bossBlindAssignments[playerId] = bossBlindAssignmentsByPlayer;
         }
@@ -770,7 +773,7 @@ export class GameService {
                 allTagCodes.push(baseTagCodeList[i % baseTagCodeList.length]);
             }
 
-            tagAssignmentsByPlayer = this.shuffleConfig(allTagCodes);
+            tagAssignmentsByPlayer = shuffleArray(allTagCodes);
             this.tagAssignments[playerId] = tagAssignmentsByPlayer;
         }
         // this.logger.log(`Player ${playerId}, tagAssignments: ${JSON.stringify(this.tagAssignments[playerId])}`);
@@ -844,15 +847,6 @@ export class GameService {
 
     private applyRewardMoney(gameState: GameState, rewardMoney: number): void {
         gameState.playerState.money += rewardMoney;
-    }
-
-    private shuffleConfig<T>(arr: T[]): T[] {
-        const out = [...arr];
-        for (let i = out.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [out[i], out[j]] = [out[j], out[i]];
-        }
-        return out;
     }
 
     /**
@@ -1029,15 +1023,16 @@ export class GameService {
      * a concrete item from the current shop, not just a static config.
      */
     private createShopState(): ShopState {
-        const shuffledConfigs = this.shuffleConfig([...SHOP_ITEM_CONFIG]);
+        const shuffledConfigs = shuffleArray(SHOP_ITEM_CONFIG);
         const selectedConfigs = shuffledConfigs.slice(0, SHOP_RULE.SHOP_ITEM_COUNT);
 
-        const items: ShopItem[] = selectedConfigs.map((config) => {
+        const items: ShopItemInstance[] = selectedConfigs.map((config) => {
             return {
                 instanceId: this.createShopItemInstanceId(),
                 configId: config.configId,
                 name: config.name,
                 type: config.type,
+                rarity: config.rarity,
                 price: config.basePrice,
                 description: config.description,
                 effectType: config.effectType,
@@ -1067,7 +1062,7 @@ export class GameService {
         };
     }
 
-    private buildShopItemResponse(item: ShopItem): ShopItemResponse {
+    private buildShopItemResponse(item: ShopItemInstance): ShopItemResponse {
         return {
             instanceId: item.instanceId,
             configId: item.configId,
