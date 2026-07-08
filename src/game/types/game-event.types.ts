@@ -13,7 +13,7 @@ import { PlayResult, SkippableBlindType } from "./game-state.types";
 import { BlindStateResponse, BlindPreparedPayload } from "./game-response.types";
 import { RewardMoneyDetail } from "./game-economy.types";
 import { ShopStateResponse } from "./shop.types";
-import { TagCode } from "../tag.config";
+import { TagCode } from "../configs";
 import { ShopItemBoughtPayload } from "./shop.types";
 
 export type BlindOverEvent = {

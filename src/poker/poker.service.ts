@@ -13,7 +13,7 @@ import {
     CARD_SCORE,
 } from "./poker.constants";
 
-import { BOSS_BLIND_CONFIG, BossEffect } from "../game/boss.config";
+import { BOSS_BLIND_CONFIG, BossEffect } from "../game/configs";
 @Injectable()
 export class PokerService {
     private readonly baseDeck: ReadonlyArray<Card>;

@@ -2,13 +2,24 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
-import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "./boss.config";
-import { TAG_CODE, TagCode } from "./tag.config";
-import { TOTAL_ANTE_COUNT, BLIND_SCORE_CONFIG } from "./blind.config";
-import { SHOP_ITEM_CONFIG, SHOP_RULE } from "./shop.config";
-import { ShopItem, ShopState, ShopStateResponse } from "./types";
+import { ShopItemInstance, ShopState, ShopStateResponse } from "./types";
+import { shuffleArray } from "./utils/array.util";
 
-import { ECONOMY_RULE, BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
+import {
+    BOSS_BLIND_CONFIG,
+    BossBlindCode,
+    BOSS_BLIND_CODE,
+    TAG_CODE,
+    TagCode,
+    TOTAL_ANTE_COUNT,
+    BLIND_SCORE_CONFIG,
+    SHOP_ITEM_CONFIG,
+    SHOP_RULE,
+    ECONOMY_RULE,
+    BLIND_REWARD_RULE,
+    INTEREST_RULE,
+} from "./configs";
+
 import {
     GameState,
     PlayerState,

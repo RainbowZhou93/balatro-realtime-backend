@@ -19,9 +19,7 @@ import {
     GameSocketEvents,
     GameStatus,
 } from "./constants";
-import { TAG_CODE } from "./tag.config";
-import { BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
-import { TOTAL_ANTE_COUNT } from "./blind.config";
+import { TAG_CODE, BLIND_REWARD_RULE, INTEREST_RULE, TOTAL_ANTE_COUNT } from "./configs";
 
 import type { GameState } from "./types";
 

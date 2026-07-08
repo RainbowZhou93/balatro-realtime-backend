@@ -1,7 +1,7 @@
 import { GameEvent } from "./game-event.types";
 import { GameStateResponse } from "./game-response.types";
 import { AnteConfig } from "./game-state.types";
-import { BlindType } from "../blind.config";
+import { BlindType } from "../configs";
 
 /**
  * Result returned by GameService command methods.
