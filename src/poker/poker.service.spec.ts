@@ -1,6 +1,6 @@
 import { PokerService } from "./poker.service";
 import { CARD_TYPE } from "./poker.constants";
-import { BOSS_BLIND_CODE } from "../game/boss.config";
+import { BOSS_BLIND_CODE } from "../game/configs";
 
 describe("PokerService.getCardType", () => {
     let service: PokerService;

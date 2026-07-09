@@ -2,13 +2,22 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Card } from "../poker/poker.types";
 import { PokerService } from "../poker/poker.service";
 import { CARD_PATTERN } from "../poker/poker.constants";
-import { BOSS_BLIND_CONFIG, BossBlindCode, BOSS_BLIND_CODE } from "./boss.config";
-import { TAG_CODE, TagCode } from "./tag.config";
-import { TOTAL_ANTE_COUNT, BLIND_SCORE_CONFIG } from "./blind.config";
-import { SHOP_ITEM_CONFIG, SHOP_RULE } from "./shop.config";
-import { ShopItem, ShopState, ShopStateResponse } from "./types";
+import { shuffleArray } from "./utils/array.util";
 
-import { ECONOMY_RULE, BLIND_REWARD_RULE, INTEREST_RULE } from "./economy.config";
+import {
+    BOSS_BLIND_CONFIG,
+    BossBlindCode,
+    BOSS_BLIND_CODE,
+    TAG_CODE,
+    TagCode,
+    TOTAL_ANTE_COUNT,
+    BLIND_SCORE_CONFIG,
+    SHOP_RULE,
+    ECONOMY_RULE,
+    BLIND_REWARD_RULE,
+    INTEREST_RULE,
+} from "./configs";
+
 import {
     GameState,
     PlayerState,
@@ -24,7 +33,6 @@ import {
     GameActionResult,
     GameEvent,
     GameStateResponse,
-    ShopItemResponse,
     BlindStateResponse,
     BlindPreparedPayload,
 } from "./types";
@@ -41,6 +49,7 @@ import {
     GameStatus,
     GameSocketEvents,
 } from "./constants";
+import { ShopService } from "./shop.service";
 
 @Injectable()
 export class GameService {
@@ -64,9 +73,9 @@ export class GameService {
     private readonly tagAssignments: Record<string, TagCode[]> = {};
     private readonly activeTags: Record<string, PlayerActiveTag[]> = {};
 
-    private shopItemInstanceIdCounter = 1;
+    private readonly shopService = new ShopService();
 
-    constructor(private readonly pokerService: PokerService) { }
+    constructor(private readonly pokerService: PokerService) {}
 
     /**
      * Initializes the full game lifecycle.
@@ -149,7 +158,7 @@ export class GameService {
         playerState.currentActionScore = 0;
         blindState.currentBlindScore = 0;
 
-        playerState.deck = this.pokerService.shuffleDeck(this.pokerService.getBaseDeck());
+        playerState.deck = shuffleArray(this.pokerService.getBaseDeck());
 
         const hand = this.pokerService.serializeCards(playerState.deck.splice(0, handSize));
         hand.sort((a, b) => {
@@ -427,8 +436,6 @@ export class GameService {
             runtimeState: {},
         });
 
-        const boughtItemResponse = this.buildShopItemResponse(shopItem);
-
         return {
             code: RESULT_CODE.SUCCESS,
             message: CODE_DESCRIPTION[RESULT_CODE.SUCCESS],
@@ -436,7 +443,7 @@ export class GameService {
                 {
                     type: GameSocketEvents.ShopItemBought,
                     payload: {
-                        item: boughtItemResponse,
+                        item: gameState.shopState.items,
                         moneyAfterPurchase: gameState.playerState.money,
                     },
                 },
@@ -511,9 +518,7 @@ export class GameService {
 
         gameState.playerState.money -= rerollCost;
 
-        gameState.shopState = this.createShopState();
-
-        const shopStateResponse = this.buildShopStateResponse(gameState);
+        gameState.shopState = this.shopService.rerollShopState(playerId, rerollCost, SHOP_RULE.SHOP_ITEM_COUNT);
 
         return {
             code: RESULT_CODE.SUCCESS,
@@ -523,7 +528,7 @@ export class GameService {
                     type: GameSocketEvents.ShopRerolled,
                     payload: {
                         cost: rerollCost,
-                        shopState: shopStateResponse,
+                        shopState: gameState.shopState,
                         moneyAfterReroll: gameState.playerState.money,
                     },
                 },
@@ -740,7 +745,7 @@ export class GameService {
         let bossBlindAssignmentsByPlayer = this.bossBlindAssignments[playerId];
         if (!bossBlindAssignmentsByPlayer) {
             const bossBlindCodeList: BossBlindCode[] = Object.values(BOSS_BLIND_CODE);
-            bossBlindAssignmentsByPlayer = this.shuffleConfig(bossBlindCodeList);
+            bossBlindAssignmentsByPlayer = shuffleArray(bossBlindCodeList);
 
             this.bossBlindAssignments[playerId] = bossBlindAssignmentsByPlayer;
         }
@@ -759,7 +764,7 @@ export class GameService {
                 allTagCodes.push(baseTagCodeList[i % baseTagCodeList.length]);
             }
 
-            tagAssignmentsByPlayer = this.shuffleConfig(allTagCodes);
+            tagAssignmentsByPlayer = shuffleArray(allTagCodes);
             this.tagAssignments[playerId] = tagAssignmentsByPlayer;
         }
         // this.logger.log(`Player ${playerId}, tagAssignments: ${JSON.stringify(this.tagAssignments[playerId])}`);
@@ -833,15 +838,6 @@ export class GameService {
 
     private applyRewardMoney(gameState: GameState, rewardMoney: number): void {
         gameState.playerState.money += rewardMoney;
-    }
-
-    private shuffleConfig<T>(arr: T[]): T[] {
-        const out = [...arr];
-        for (let i = out.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [out[i], out[j]] = [out[j], out[i]];
-        }
-        return out;
     }
 
     /**
@@ -919,7 +915,7 @@ export class GameService {
             this.advanceToNextBlind(gameState, nextProgress);
 
             gameState.gameStatus = GameStatus.SHOPPING;
-            gameState.shopState = this.createShopState();
+            gameState.shopState = this.shopService.createShopState(gameState.playerId, SHOP_RULE.SHOP_ITEM_COUNT);
 
             this.cleanupExpiredTags(gameState.playerId);
 
@@ -930,7 +926,7 @@ export class GameService {
 
             events.push({
                 type: GameSocketEvents.ShopEntered,
-                payload: this.buildShopStateResponse(gameState),
+                payload: gameState.shopState,
             });
 
             return events;
@@ -1004,67 +1000,9 @@ export class GameService {
                 currentBlindScore: blindState.currentBlindScore,
             },
 
-            shopState:
-                gameState.gameStatus === GameStatus.SHOPPING ? this.buildShopStateResponse(gameState) : undefined,
+            shopState: gameState.gameStatus === GameStatus.SHOPPING ? gameState.shopState : undefined,
 
             gameStatus: gameState.gameStatus,
-        };
-    }
-
-    /**
-     * Creates a new shop state from static shop item configs.
-     *
-     * Each shop item gets a runtime instanceId so the client can buy
-     * a concrete item from the current shop, not just a static config.
-     */
-    private createShopState(): ShopState {
-        const shuffledConfigs = this.shuffleConfig([...SHOP_ITEM_CONFIG]);
-        const selectedConfigs = shuffledConfigs.slice(0, SHOP_RULE.SHOP_ITEM_COUNT);
-
-        const items: ShopItem[] = selectedConfigs.map((config) => {
-            return {
-                instanceId: this.createShopItemInstanceId(),
-                configId: config.configId,
-                name: config.name,
-                type: config.type,
-                price: config.basePrice,
-                description: config.description,
-                effectType: config.effectType,
-                purchased: false,
-            };
-        });
-
-        return {
-            items,
-            rerollCost: SHOP_RULE.DEFAULT_REROLL_COST,
-        };
-    }
-
-    private buildShopStateResponse(gameState: GameState): ShopStateResponse {
-        const shopState = gameState.shopState;
-
-        if (!shopState) {
-            return {
-                items: [],
-                rerollCost: SHOP_RULE.DEFAULT_REROLL_COST,
-            };
-        }
-
-        return {
-            items: shopState.items.map((item) => this.buildShopItemResponse(item)),
-            rerollCost: shopState.rerollCost,
-        };
-    }
-
-    private buildShopItemResponse(item: ShopItem): ShopItemResponse {
-        return {
-            instanceId: item.instanceId,
-            configId: item.configId,
-            name: item.name,
-            type: item.type,
-            price: item.price,
-            description: item.description,
-            purchased: item.purchased,
         };
     }
 
@@ -1091,13 +1029,6 @@ export class GameService {
             blindState: this.buildBlindStateResponse(gameState),
             anteConfig: gameState.blindState.currentAnteConfig,
         };
-    }
-
-    /**
-     * Generates a runtime id for a concrete shop item instance.
-     */
-    private createShopItemInstanceId(): string {
-        return `shop_item_${this.shopItemInstanceIdCounter++}`;
     }
 
     /**

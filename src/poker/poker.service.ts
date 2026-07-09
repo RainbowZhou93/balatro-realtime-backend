@@ -13,7 +13,7 @@ import {
     CARD_SCORE,
 } from "./poker.constants";
 
-import { BOSS_BLIND_CONFIG, BossEffect } from "../game/boss.config";
+import { BOSS_BLIND_CONFIG, BossEffect } from "../game/configs";
 @Injectable()
 export class PokerService {
     private readonly baseDeck: ReadonlyArray<Card>;
@@ -96,14 +96,6 @@ export class PokerService {
 
     public getBaseDeck(): Card[] {
         return [...this.baseDeck];
-    }
-
-    public shuffleDeck(deck: Card[]): Card[] {
-        for (let i = deck.length - 1; i > 0; i--) {
-            const randomNum = Math.floor(Math.random() * (i + 1));
-            [deck[i], deck[randomNum]] = [deck[randomNum], deck[i]];
-        }
-        return deck;
     }
 
     public calculateHandScore(

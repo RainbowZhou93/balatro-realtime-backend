@@ -1,6 +1,5 @@
 import { Card } from "../../poker/poker.types";
-import { BlindType } from "../blind.config";
-import { TagCode } from "../tag.config";
+import { BlindType, TagCode } from "../configs";
 import { GameStatus } from "../constants";
 import { RewardMoneyDetail } from "./game-economy.types";
 import { ShopState } from "./shop.types";

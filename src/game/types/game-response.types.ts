@@ -1,5 +1,5 @@
 import { GameStatus } from "../constants";
-import { BlindType } from "../blind.config";
+import { BlindType } from "../configs";
 import { ShopStateResponse } from "./shop.types";
 import { AnteConfig, PlayerJoker } from "./game-state.types";
 
