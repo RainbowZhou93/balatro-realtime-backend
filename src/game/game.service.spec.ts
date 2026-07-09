@@ -716,6 +716,8 @@ describe("GameService", () => {
             expect(state.shopState?.items.length).toBeGreaterThan(0);
 
             const item = state.shopState!.items[0];
+            // Ensure player has enough money to buy the item for deterministic test.
+            if (state.playerState.money < item.price) state.playerState.money = item.price;
             const moneyBefore = state.playerState.money;
 
             const result = service.buyShopItem(playerId, item.instanceId);
@@ -759,6 +761,8 @@ describe("GameService", () => {
             const state = prepareShopping(playerId);
 
             const item = state.shopState!.items[0];
+            // Ensure player has enough money for purchase
+            if (state.playerState.money < item.price) state.playerState.money = item.price;
 
             const first = service.buyShopItem(playerId, item.instanceId);
             const second = service.buyShopItem(playerId, item.instanceId);

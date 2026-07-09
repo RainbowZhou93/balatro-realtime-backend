@@ -1,4 +1,4 @@
-import { HandType } from "../poker/poker.types";
+import { HandType } from "../../poker/poker.types";
 
 export const BOSS_BLIND_CODE = {
     THE_CLUB: 101,

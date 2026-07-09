@@ -32,7 +32,7 @@ export type ShopStateResponse = {
  * while playerState.jokers in game:stateChanged describes owned Jokers.
  */
 export type ShopItemBoughtPayload = {
-    item: ShopItemResponse;
+    item: ShopItemResponse[];
     moneyAfterPurchase: number;
 };
 
