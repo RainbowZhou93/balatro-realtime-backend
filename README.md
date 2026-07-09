@@ -4,9 +4,9 @@
 
 Current focus:
 
+* Shop item pool and runtime item generation
 * Shop phase lifecycle
-* Shop item generation and purchase flow
-* Shop reroll and next Blind preparation
+* Shop item purchase and reroll flow
 * Reward-to-shop game loop
 * Stateful game lifecycle evolution
 * Realtime game state synchronization
@@ -20,7 +20,9 @@ Completed recently:
 * Player money state
 * Basic economy rule configuration
 * Shop entry after Blind win
-* Basic shop item generation
+* Shop item pool configuration
+* Rarity-based Joker item generation
+* Runtime shop item instance generation
 * Shop item purchase flow
 * Shop reroll flow
 * Enter next Blind preparation from shop
@@ -88,6 +90,7 @@ The goal is to gradually implement core backend capabilities through a complete 
 
 * WebSocket Gateway (entry point)
 * Game Service (game lifecycle orchestration)
+* Shop Service (shop item pool and runtime shop state generation)
 * Poker Service (card rules and scoring logic)
 * State-driven game lifecycle management
 * In-memory per-player runtime state
@@ -100,7 +103,8 @@ The goal is to gradually implement core backend capabilities through a complete 
 * Reward settlement and money state update
 * Basic economy rule configuration
 * Shop phase state management
-* Shop item generation
+* Rarity-based Joker item generation
+* Runtime shop item instance generation
 * Shop item purchase and reroll flow
 * Player-owned Joker placeholder state
 * WebSocket domain events and final state snapshot response
@@ -179,6 +183,7 @@ flowchart LR
       - configId
       - name
       - type
+      - rarity
       - price
       - description
       - purchased
@@ -280,7 +285,7 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 | Boss Blind       | Representative Boss Blind rule handling                                     |
 | Skip Blind / Tag | Skip flow, Tag reward preview, basic runtime Tag effects                    |
 | Economy          | Blind reward, remaining hand bonus, interest calculation, money update      |
-| Shop             | Shop entry, item generation, buy item, reroll shop, enter next Blind        |
+| Shop             | Shop | Shop entry, rarity-based Joker item generation, runtime item instances, buy item, reroll shop, enter next Blind        |
 | Events           | Domain events + final `game:stateChanged` snapshot                          |
 | Testing          | Jest unit tests and integration-like tests                                  |
 | CI               | GitHub Actions automation                                                   |
@@ -293,9 +298,9 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 ### Phase 1 - Single game flow
 
 ✔ Card type judgment implementation   
-✔ Unit test for hand evaluation 
+✔ Unit test for hand evaluation  
 ✔ Initialize NestJS structure   
-✔ Migrate hand evaluator to module 
+✔ Migrate hand evaluator to module   
 ✔ Add WebSocket gateway   
 ✔ Implement deck generation (52 cards)   
 ✔ Implement shuffle algorithm (Fisher-Yates)   
@@ -309,12 +314,12 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 
 ### Phase 2 - Blind / stage system
 
-✔ Refactor GameState into playerState and blindState 
-✔ Add Blind score configuration 
+✔ Refactor GameState into playerState and blindState   
+✔ Add Blind score configuration  
 ✔ Add round / ante / blindType state  
 ✔ Add currentBlindScore and targetScore tracking  
 ✔ Implement Blind settlement flow  
-✔ Advance to next Blind after clearing current Blind 
+✔ Advance to next Blind after clearing current Blind   
 ✔ Reset game state after failure   
 ✔ Update unit tests for Blind progression   
 ✔ Add Boss Blind special rules  
@@ -339,7 +344,10 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 | Money Update             |    ✔ Done | Update player money after Blind win        |
 | Shop Entry               |    ✔ Done | Enter shop after Blind win                 |
 | Shop State               |    ✔ Done | Add basic shop state structure             |
-| Placeholder Joker Items  |    ✔ Done | Generate virtual Joker shop items          |
+| Basic Joker Items | ✔ Done | Add initial Joker item configs for shop flow |
+| Joker Item Config Pool        | ✔ Done | Expand Joker item configs as shop item pool |
+| Shop Item Instance Generation | ✔ Done | Convert static item configs into runtime shop items |
+| Rarity-based Joker Generation | ✔ Done | Generate Joker shop items by rarity weight |
 | Buy Shop Item            |    ✔ Done | Buy shop item and mark item as purchased   |
 | Player-owned Joker State |    ✔ Done | Store bought Joker in player state         |
 | Reroll Shop              |    ✔ Done | Spend money to refresh shop items          |
@@ -350,7 +358,7 @@ The system is evolving from a single-game lifecycle into a staged game engine wi
 
 Planned next:
 
-* Refine shop item response and player Joker response boundaries
+* Refine player-owned Joker response and runtime Joker state boundaries
 * Add representative Joker effects
 * Design Joker effect trigger timing
 * Introduce basic modifier / effect execution pipeline
@@ -436,13 +444,13 @@ ws://localhost:8088
 
 #### buyShopItem
 
-The `instanceId` should be taken from `shopState.items`.
+The `instanceId` should be taken from `shopState.items`, for example `shop_item_player-1_0`.
 
 ```json
 {
   "event": "buyShopItem",
   "data": {
-    "instanceId": "shop_item_1"
+    "instanceId": "shop_item_player-1_0"
   }
 }
 ```
@@ -515,23 +523,25 @@ Each article corresponds to a specific implementation stage and commit history.
 
 9. Blind Reward Settlement and Money State Design  
    从0到1实现Balatro游戏后端（9）：Blind奖励结算与金币状态设计
+10. Shop Phase and Item Purchase Lifecycle Design  
+    从0到1实现Balatro游戏后端（10）：商店阶段与商品购买闭环实现
 
 #### Advanced Topics
 
-1. Custom NestJS WebSocket Adapter for Message Interception 
+1. Custom NestJS WebSocket Adapter for Message Interception   
    Balatro后端进阶（1）：自定义NestJS WebSocket Adapter实现消息拦截
 
 2. CI Automation with GitHub Actions   
    Balatro后端进阶（2）：基于GitHub Actions的CI自动化验证实现
 
-3. Why Mechanism Design Makes Code Harder 
+3. Why Mechanism Design Makes Code Harder   
    Balatro后端进阶（3）：为什么机制设计比写代码更难
 
 ---
 
 ### Upcoming Articles
 
-10. Shop Phase and Item Purchase Lifecycle Design  
-    从0到1实现Balatro游戏后端（10）：商店阶段与商品购买闭环实现
+11. Shop Item Pool and Runtime Item Generation Design  
+    从0到1实现Balatro游戏后端（11）：商店商品池与运行时商品生成机制设计
 
 (Updating...)

@@ -759,19 +759,34 @@ game:stateChanged
 
 ```json
 {
-  "event": "game:shopItemBought",
-  "data": {
-    "item": {
-      "instanceId": "shop_item_1",
-      "configId": 1001,
-      "name": "Joker",
-      "type": "joker",
-      "price": 1,
-      "description": "+4 Mult. Current stage only stores it, effect will be implemented later.",
-      "purchased": true
-    },
-    "moneyAfterPurchase": 6
-  }
+    "event": "game:shopItemBought",
+    "data": {
+        "item": [
+            {
+                "instanceId": "shop_item_::1:53205_0",
+                "configId": 1004,
+                "name": "Wrathful Joker",
+                "type": "joker",
+                "rarity": "common",
+                "price": 5,
+                "description": "Played Spade cards give +3 Mult when scored. Effect will be implemented later.",
+                "effectType": "add_to_joker_slots",
+                "purchased": true
+            },
+            {
+                "instanceId": "shop_item_::1:53205_1",
+                "configId": 1008,
+                "name": "Joker Stencil",
+                "type": "joker",
+                "rarity": "uncommon",
+                "price": 8,
+                "description": "X Mult based on empty Joker slots. Effect will be implemented later.",
+                "effectType": "add_to_joker_slots",
+                "purchased": false
+            }
+        ],
+        "moneyAfterPurchase": 2
+    }
 }
 ```
 
