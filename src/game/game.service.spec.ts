@@ -659,6 +659,7 @@ describe("GameService", () => {
             state.blindState.round = TOTAL_ANTE_COUNT * 3;
             state.blindState.blindType = "boss";
             state.blindState.targetScore = 1;
+            state.blindState.currentBlindScore = 1;
 
             const card = dealResult.playerState!.hand[0];
             const result = service.selectCards([card], "play", playerId);
