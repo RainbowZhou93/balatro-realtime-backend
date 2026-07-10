@@ -13,6 +13,7 @@ import { ShopItemConfig } from "../types/shop.types";
 export const SHOP_RULE = {
     SHOP_ITEM_COUNT: 2,
     DEFAULT_REROLL_COST: 5,
+    REROLL_COST_INCREMENT: 1,
 } as const;
 
 export const SHOP_ITEM_TYPE = {

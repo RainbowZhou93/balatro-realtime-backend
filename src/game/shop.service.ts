@@ -11,7 +11,11 @@ export class ShopService {
      * Each item has its own instanceId and runtime price,
      * so the client should buy items by instanceId instead of configId.
      */
-    public createShopState(playerId: string, count = SHOP_RULE.SHOP_ITEM_COUNT): ShopState {
+    public createShopState(
+        playerId: string,
+        count: number = SHOP_RULE.SHOP_ITEM_COUNT,
+        rerollCost: number = SHOP_RULE.DEFAULT_REROLL_COST,
+    ): ShopState {
         const jokerConfigs = this.getAvailableJokerConfigs();
         const selectedConfigs = this.pickJokerConfigs(jokerConfigs, count);
 
@@ -20,20 +24,7 @@ export class ShopService {
         );
         return {
             items,
-            rerollCost: SHOP_RULE.DEFAULT_REROLL_COST,
-        };
-    }
-
-    public rerollShopState(playerId: string, currentRerollCost: number, count: number): ShopState {
-        const jokerConfigs = this.getAvailableJokerConfigs();
-        const selectedConfigs = this.pickJokerConfigs(jokerConfigs, count);
-
-        const items: ShopItemInstance[] = selectedConfigs.map((config) =>
-            this.createShopItemInstance(playerId, config),
-        );
-        return {
-            items,
-            rerollCost: currentRerollCost++,
+            rerollCost: rerollCost,
         };
     }
 

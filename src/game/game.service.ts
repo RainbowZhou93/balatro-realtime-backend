@@ -518,7 +518,11 @@ export class GameService {
 
         gameState.playerState.money -= rerollCost;
 
-        gameState.shopState = this.shopService.rerollShopState(playerId, rerollCost, SHOP_RULE.SHOP_ITEM_COUNT);
+        gameState.shopState = this.shopService.createShopState(
+            playerId,
+            SHOP_RULE.SHOP_ITEM_COUNT,
+            rerollCost + SHOP_RULE.REROLL_COST_INCREMENT,
+        );
 
         return {
             code: RESULT_CODE.SUCCESS,
